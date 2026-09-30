@@ -36,3 +36,13 @@ target_link_libraries(uac_target_tests PRIVATE fm1_uac)
 add_test(NAME usb_audio_target_lifecycle COMMAND uac_target_tests)
 add_executable(mdx_render tests/render.c)
 target_link_libraries(mdx_render PRIVATE fm1_mdx)
+
+# Integrated host replay; commercial MDX/PDX inputs stay outside this tree.
+add_executable(mdx_audio_replay tests/audio_replay.c tests/audio_replay_usb.c
+  ../usb-diag/peripheral_logic.c ../nes/src/fm1_stock_keys.c
+  ../nes/src/fm1_volume.c ../nes/src/fm1_audio_queue.c)
+target_include_directories(mdx_audio_replay PRIVATE ../usb-diag ../usb-diag/tests ../nes/include ../nes/boot ../usb-audio)
+target_compile_definitions(mdx_audio_replay PRIVATE FM1_MDX_PLAYER=1 FM1_KEYSCAN_IRQ=1 FM1_KEYSCAN_PACED=1 FM1_KEYSCAN_DMA2=1 FM1_VOLUME_TEST=1)
+target_link_libraries(mdx_audio_replay PRIVATE fm1_mdx fm1_uac)
+add_test(NAME mdx_audio_replay_stress COMMAND mdx_audio_replay --demo unused
+  audio-replay-demo.wav 65 500 stress)

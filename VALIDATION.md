@@ -310,8 +310,73 @@ Application payload185488 bytes, SHA256
 Offline unit-image packaging against the observed installed baseline succeeds:
 candidate1MiB SHA256
 `06c55a3ea1310b91fff144949e6906823e697c305683d89d3979292794c51d11`.
-The installed image remains
-`1c671a1c09840f15d0dea5411d3cdbd04febc1dee6b9551a969f2b15e85c36e6`,
-and its exact rollback is retained privately. The new candidate has not been
-flashed; exact-candidate authorization and bench playback/counters remain pending.
+The user approved the exact candidate and rollback plan. The candidate was
+flashed with44 verified sectors and one matching full-image readback, reset
+once, and observed booting. The preceding image
+`1c671a1c09840f15d0dea5411d3cdbd04febc1dee6b9551a969f2b15e85c36e6`
+is retained privately as rollback. Listening acceptance FAILED: the user heard
+initially clean playback become noisy through USB audio on the PC. Playback
+was stopped. The first120-second capture was aborted before its WAV was saved;
+it is not a completed bench pass. A subsequent149.98-second incremental capture
+has peak32768 and RMS18612. A one-byte alignment change reduces these to
+peak10323 and RMS1547. Sampled buffer-error counters remained zero. This is
+strong evidence of sample alignment/order corruption in the capture chain,
+not proof of its exact origin; analog output was not evaluated for this failure.
 All recordings, songs, stems and unit images remain outside Git.
+
+## Integrated host replay of the noisy candidate (2026-09-30)
+
+`mdx_audio_replay` executes the current owner task, sequencer/FM/PCM renderer,
+2048-frame ring, actual64-frame `audio_output`, UAC target/bridge and little-endian
+packet encoder. The SDK boundaries use mocks with a10ms OS tick,64-frame DAC
+callbacks and1ms USB callbacks. Each encoded sample is independently decoded
+and checked against the maximum source magnitude, so passing buffer counters
+alone cannot conceal byte-swapped full-scale noise.
+
+Build with `python scripts/build.py host`. For a private external song:
+
+```powershell
+& firmware/mdx/build/host/Release/mdx_audio_replay.exe song.mdx song.pdx replay.wav 600 0 normal
+& firmware/mdx/build/host/Release/mdx_audio_replay.exe song.mdx song.pdx stress.wav 180 500 stress
+```
+
+Duration is1..3600 seconds; drift is-1000..1000ppm. Runs of600 seconds or longer
+queue PLAY again every360 seconds to cover song restart after natural completion.
+Stress mode seeds ring/FIFO counters near32-bit rollover, closes/reopens capture
+every15 seconds, resets the USB interfaces every61 seconds, and stalls the
+producer60ms every47 seconds. These are explicitly injected conditions.
+
+Private OutRun results against the current playback sources:
+
+| Run | Duration | Peak | Clipped samples | Synth missing / rebuffer events | USB FIFO errors |
+| --- | --- | --- | --- | --- | --- |
+| Normal,0ppm; one song restart | 600s | 10785 | 0 | 0 / 0 | 0 |
+| Normal,+500ppm | 180s | 10410 | 0 | 0 / 0 | 0 |
+| Normal,-500ppm | 180s | 10555 | 0 | 0 / 0 | 0 |
+| Stress,+500ppm | 180s | 10303 | 0 | 192 / 3 | 0 |
+| Stress,-500ppm | 180s | 10396 | 0 | 192 / 3 | 0 |
+
+Both180-second stress runs include14 stream restarts, three producer stalls
+and ring/FIFO rollover. Deliberate starvation produces counted gaps, without
+the persistent full-scale collapse. A separate600-second MSVC AddressSanitizer
+stress run reports no memory errors,49 stream restarts,12 producer stalls,
+768 missing samples/12 rebuffer events, and zero USB FIFO errors.
+
+A private positive control removes exactly one byte downstream of the modeled
+encoder at30 seconds. Its checked5-second interval changes from peak8589,
+RMS1501 and zero clipping to peak32768, RMS18210 and426 full-scale samples.
+Realigning the bytes restores peak8589/RMS1501 with zero clipping. This matches
+the observed failure pattern but is an injected transport fault, not a
+spontaneous reproduction by the firmware code.
+
+All7 CTests,7 client checks,3 screenshot checks and the descriptor check pass.
+The new CI test uses the redistributable demo for65 seconds of stress. Only host
+test sources and documentation changed; playback/USB firmware sources remain
+unchanged from935e9b7. No additional firmware was flashed for this experiment.
+
+The model does not emulate WL82 instructions, DMA, actual USB transfers, Windows
+audio drivers, or interrupt/CPU timing. Those remain possible failure locations.
+The current UAC target ignores `usb_g_iso_write` results; `tx_packets` counts
+encoder attempts before submission, and `bad_packets` concerns USB OUT input.
+Consequently, the existing status does not certify successful or correctly
+aligned USB IN transfers. Device listening acceptance remains open.
