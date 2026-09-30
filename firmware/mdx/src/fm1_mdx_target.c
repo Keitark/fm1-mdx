@@ -261,9 +261,9 @@ static void ui_update(void) {
     if(!control.running){memset(ui.spectrum,0,sizeof(ui.spectrum));memset(&player.meters,0,sizeof(player.meters));}
 }
 static int ui_row(unsigned y) {
-    uint8_t col[4]={0,0,0,239},rows[4]={0,(uint8_t)(40+y),0,(uint8_t)(40+y)};
-    /* y+40 can exceed255; set the high bytes explicitly. */
-    rows[0]=rows[2]=(uint8_t)((40+y)>>8);
+    /* The stock fill overrides the init window, as the qualified NES path
+       already does: visible rows are0..239, with no extra40-row shift. */
+    uint8_t col[4]={0,0,0,239},rows[4]={0,(uint8_t)y,0,(uint8_t)y};
     if(screen_frame && !fm1_screen_row_changed(&screen_shown,&ui,y)){ui_skipped++;return 0;}
     fm1_screen_row(&ui,y,row_pixels);
     ui_rows++;

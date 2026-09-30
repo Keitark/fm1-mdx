@@ -99,3 +99,17 @@ formatting of16 static labels on every row. A measured song preview remains
 pixel-identical. New `MDX VOLUME` and `MDX SCAN` commands expose volume target,
 ADC progress and scanner failure snapshots. Correction host tests pass; hardware FPS, controls and audio still require
 bench validation. The user subsequently requested flashing after investigation.
+
+
+## Panel addressing follow-up
+
+The panel-init table sets rows40..279, but the stock fill and qualified NES
+async path override it with a zero-based window. The MDX writer mistakenly
+reintroduced y+40. It now writes rows0..239. Target-boundary tests assert the
+actual RASET commands for all240 rows; replay maps those physical addresses
+directly to the expected image, without compensating for an offset in the mock.
+
+After0284ee8, live diagnostics measured20FPS, keys=0, valid/progressing ADC
+and no reported synth underruns/rebuffering. The50ms view interval (20FPS) and per-row audio-reserve gate remain unchanged
+at the user's request. Meter movement still requires bench observation. USB error31
+recurred during a Laydock upload; that transport fault is still unresolved.

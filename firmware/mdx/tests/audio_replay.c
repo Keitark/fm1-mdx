@@ -60,7 +60,7 @@ void fm1_display_test_stop(void){}
 int fm1_display_write(int data,const uint8_t *b,size_t n){CHECK(b&&n&&(data==0||data==1));
     if(!data){CHECK(n==1);lcd_command=b[0];}
     else if(lcd_command==0x2b){CHECK(n==4);lcd_y=(b[0]<<8)|b[1];CHECK(lcd_y==((b[2]<<8)|b[3]));}
-    else if(n==480){CHECK(lcd_command==0x2c && lcd_y>=40 && lcd_y<280);memcpy(lcd_buffer[lcd_y-40],b,480);lcd_us+=400;while(lcd_us>=1000){lcd_us-=1000;advance(1);}}return 0;}
+    else if(n==480){CHECK(lcd_command==0x2c && lcd_y<240);memcpy(lcd_buffer[lcd_y],b,480);lcd_us+=400;while(lcd_us>=1000){lcd_us-=1000;advance(1);}}return 0;}
 int fm1_wl82_keyscan_async_start(fm1_wl82_keyscan *s,void *u,uint32_t (*clock)(void *)){CHECK(!u&&clock);s->running=1;return 0;}
 void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *s){(void)s;}
 void fm1_wl82_keyscan_async_kick(fm1_wl82_keyscan *s){s->sequence++;}

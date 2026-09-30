@@ -7,6 +7,7 @@ volatile uint32_t fm1_display_stage;
 volatile int fm1_display_error;
 static unsigned ms,opened,closed,timer_deleted,key_stopped,lcd_stopped;
 static uint32_t adc;
+static unsigned lcd_command,lcd_y,lcd_first,lcd_last;
 static void (*worker)(void *),(*tick)(void *),(*alink)(void),(*keyirq)(void);
 static void (*output)(void *,u8 *,int,u8);
 static jmp_buf done;
@@ -31,7 +32,11 @@ void sys_usec_timer_del(int id){CHECK(id==1);tick=0;timer_deleted++;}
 int fm1_display_test_init(void){return 0;}
 int fm1_display_test_frame(uint32_t n){(void)n;return 0;}
 void fm1_display_test_stop(void){lcd_stopped++;}
-int fm1_display_write(int data,const uint8_t *b,size_t n){CHECK(b && n && (data==0||data==1));return 0;}
+int fm1_display_write(int data,const uint8_t *b,size_t n){CHECK(b && n && (data==0||data==1));
+    if(!data){CHECK(n==1);lcd_command=b[0];}
+    else if(lcd_command==0x2b){CHECK(n==4 && !b[0] && !b[2] && b[1]==b[3] && b[1]<240);lcd_y=b[1];}
+    else if(n==480){CHECK(lcd_command==0x2c);if(!lcd_y)lcd_first++;if(lcd_y==239)lcd_last++;}
+    return 0;}
 int fm1_wl82_keyscan_async_start(fm1_wl82_keyscan *s,void *u,uint32_t (*clock)(void *)){CHECK(!u && clock);s->running=1;return 0;}
 void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *s){(void)s;}
 void fm1_wl82_keyscan_async_kick(fm1_wl82_keyscan *s){s->sequence++;}
@@ -115,7 +120,12 @@ static void audio_boundary_tests(void) {
     rd=wr=underruns=frames=callback_ms=callback_gap_ms=late_callbacks=rebuffer_events=rebuffer_frames=render_max_ms=0;
     callback_seen=0;queue_min=2048;ms=0;memset(&mdx_volume,0,sizeof(mdx_volume));
 }
-int main(void){panel_tests();audio_boundary_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
+static void row_address_tests(void) {
+    unsigned y;screen_frame=0;
+    for(y=0;y<240;y++){CHECK(!ui_row(y));CHECK(lcd_y==y);}
+    CHECK(lcd_first && lcd_last);
+}
+int main(void){row_address_tests();panel_tests();audio_boundary_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
     CHECK(opened==1 && closed==1 && key_stopped==1 && lcd_stopped==1 && timer_deleted==1);
     CHECK(!audio_enabled && !scan_enabled && !alink && !keyirq && control.quiescent && !control.running);
     CHECK(fm1_peripheral_idle());puts("PASS MDX task, stereo DMA, controls, stop/upload exclusion, disconnect continuity, complete UBOOT teardown");return 0;
