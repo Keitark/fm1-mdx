@@ -64,3 +64,14 @@ add_test(NAME mdx_keyscan_coarse_clock COMMAND keyscan_clock_tests)
 add_executable(usb_packet_tests ../usb-diag/test_packet.c ../usb-diag/packet.c)
 target_compile_definitions(usb_packet_tests PRIVATE FM1_USB_PACKET_HOST=1)
 add_test(NAME usb_nonblocking_packets COMMAND usb_packet_tests)
+
+# Shared endpoint fault model executes the actual UAC target and packet helper.
+add_executable(usb_stall_tests ../usb-audio/test_stall.c ../usb-diag/packet.c)
+target_include_directories(usb_stall_tests PRIVATE ../usb-diag)
+target_compile_definitions(usb_stall_tests PRIVATE FM1_UAC_TARGET_HOST=1
+  FM1_USB_PACKET_HOST=1 FM1_USB_PACKET_COMPOSITE_HOST=1)
+target_link_libraries(usb_stall_tests PRIVATE fm1_uac)
+add_test(NAME usb_shared_endpoint_stall COMMAND usb_stall_tests)
+add_test(NAME usb_shared_endpoint_backpressure COMMAND usb_stall_tests stress)
+set_tests_properties(usb_shared_endpoint_stall usb_shared_endpoint_backpressure
+  PROPERTIES TIMEOUT 20)

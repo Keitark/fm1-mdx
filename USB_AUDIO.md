@@ -128,6 +128,24 @@ malformed requests/packets, stereo isolation, clipping, reset/UBOOT teardown
 and60 simulated seconds at0 and±500ppm DAC drift. The final command checks the
 linked composite ELF and rejects descriptor and power-instruction corruption.
 
+`usb_stall_tests` in the host Release build executes the actual UAC target and
+packet helper against a shared endpoint model for600 virtual seconds. Run it
+without arguments for continuous capture/CDC, or with `stress` for audio-only
+and whole-bus host pauses, ready/busy races, stale serial sessions, epoch rollover
+and stream resets. Audio-only backpressure must leave serial progressing;
+both endpoints must recover after whole-bus backpressure ends. Deliberately
+stopping host reads can drop capture samples; it must not cause a permanent CPU
+stall. CTest bounds both runs with a20-second watchdog.
+
+A separate positive control reconstructs only the reviewed pinned SDK writer's
+busy/deadline loop: TxPktRdy stays set, neither escape flag is set, and jiffies
+either advances or is deliberately frozen. It times out with the advancing
+clock; with the frozen clock it reaches the100000-iteration watchdog. That is
+a conditional deadlock demonstration, not execution of the SDK binary or a
+spontaneous reproduction of FM1's failure. The model does not emulate register
+acknowledgement delays, DMA bus arbitration, actual IRQ priorities, Windows or
+OBS. Normal OBS software mute is not modeled as a device stream transition.
+
 Before hardware acceptance, install one reviewed candidate with the known
 working CDC firmware rollback ready. Confirm separate CDC and USB audio
 functions, left/right playback, MDX recording with PC return excluded, PC audio
