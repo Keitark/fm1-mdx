@@ -43,9 +43,30 @@ class LinkTests(unittest.TestCase):
     def test_original_passes(self):
         self.assertEqual(self.check_elf(self.elf)['static_audit'], 'passed')
 
+    def test_usb_task_affinity_corruption_is_rejected(self):
+        # A corrupted task-name pointer must not bypass the CPU0 requirement.
+        with self.assertRaisesRegex(ValueError, 'task registration changed: #C0usb_diag'):
+            self.check_elf(self.corrupt('task_info_table', 4 * 20))
+
+    def test_peripheral_task_affinity_corruption_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'task registration changed: #C0peripheral'):
+            self.check_elf(self.corrupt('task_info_table', 5 * 20))
+
     def test_descriptor_corruption_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'UAC1 interface/terminal'):
             self.check_elf(self.corrupt('fm1_uac_descriptor', 90))
+
+    def test_packet_dma_count_corruption_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'USB packet commit instructions changed'):
+            self.check_elf(self.corrupt('fm1_usb_packet_write', 0x76))
+
+    def test_packet_doorbell_corruption_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'USB packet short call changed'):
+            self.check_elf(self.corrupt('fm1_usb_packet_write', 0x8c))
+
+    def test_packet_irq_restore_corruption_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'USB packet commit instructions changed'):
+            self.check_elf(self.corrupt('fm1_usb_packet_write', 0x96))
 
     def test_power_destination_corruption_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'Power merged-global target changed: sys_low_power'):

@@ -14,7 +14,12 @@ void arch_spin_unlock(spinlock_t *l){CHECK(*l);*l=0;}
 usb_dev usb_device2id(const struct usb_device_t *d){CHECK(d==&device);return 0;}
 struct usb_device_t *usb_id2device(usb_dev id){CHECK(!id);return &device;}
 u32 usb_g_iso_read(usb_dev id,u32 ep,void *p,u32 n,u32 last){CHECK(!id && ep==1 && !p && n==192 && !last);return rx_length;}
-u32 usb_g_iso_write(usb_dev id,u32 ep,void *p,u32 n){CHECK(!id && ep==1 && !p && n==192 && !(tx_csr&1));tx_length=n;tx_calls++;return tx_result;}
+unsigned fm1_usb_packet_write(unsigned id,unsigned ep,const uint8_t *p,unsigned n,const volatile unsigned *epoch,unsigned expected){
+    CHECK(!id && ep==1 && p && n==192 && epoch==&capture_epoch);
+    if(*epoch!=expected || (tx_csr&1))return 0;
+    if(tx_result==n)memcpy(dma[1],p,n);
+    tx_length=n;tx_calls++;return tx_result;
+}
 u32 usb_read_txcsr(usb_dev id,u32 ep){CHECK(!id && ep==1);return tx_csr;}
 void usb_write_txcsr(usb_dev id,u32 ep,u32 v){CHECK(!id && ep==1 && v==(TXCSRP_FlushFIFO|TXCSRP_ClrDataTog|TXCSRP_ISOCHRONOUS));tx_csr=0;tx_flushes++;}
 void usb_write_rxcsr(usb_dev id,u32 ep,u32 v){CHECK(!id && ep==1 && v==(RXCSRP_FlushFIFO|RXCSRP_ClrDataTog|RXCSRP_ISOCHRONOUS));rx_flushes++;}
@@ -47,6 +52,17 @@ int main(void) {
      tx_result=192;set(4,0);CHECK(!bridge.in_active && !interrupts[1] && !bridge.capture.primed);
      tx_csr=TXCSRP_TxPktRdy;set(4,1);CHECK(!tx_csr && bridge.in_active && transport.starts==2);
      CHECK(tx_flushes>=3 && rx_flushes>=1 && transport.submitted==3);}
+    {u8 staged[192],held[192];unsigned rd;
+     memcpy(held,dma[1],192);tx_result=0;interrupts[1](&device,1);
+     CHECK(capture_pending==192 && !memcmp(held,dma[1],192));
+     memcpy(staged,capture_packet,192);rd=bridge.capture.rd;
+     fm1_usb_audio_dac(pcm,64);tx_result=192;interrupts[1](&device,1);
+     CHECK(!capture_pending && bridge.capture.rd==rd && !memcmp(staged,dma[1],192));
+     tx_result=0;interrupts[1](&device,1);CHECK(capture_pending==192);
+     set(4,0);CHECK(!capture_pending);set(4,1);CHECK(capture_pending==192);
+     /* New stream's unprimed packet is silence, not the old pending packet. */
+     memset(staged,0,192);CHECK(!memcmp(staged,capture_packet,192));
+     tx_result=192;interrupts[1](&device,1);CHECK(!capture_pending && !memcmp(staged,dma[1],192));}
     {struct usb_ctrlrequest r={0x81,10,0,4,1};handlers[4](&device,&r);CHECK(device.setup[0]==1);}
     for(i=0;i<200;i++){struct usb_ctrlrequest r={0x21,1,0,3,(uint16_t)i};phase=99;handlers[3](&device,&r);CHECK(phase==7);}
     resets[2](&device,2);CHECK(!bridge.out_active && !bridge.in_active && !interrupts[0] && !interrupts[1]);

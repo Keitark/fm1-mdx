@@ -448,3 +448,39 @@ The50ms requested view interval is unchanged. Both prior images are preserved
 privately for rollback. Physical screen offset is accepted; meter movement,
 Laydock reload and USB audio reliability are separate acceptance items. Reload
 at120-byte/20ms and48-byte/50ms pacing timed out with capture active.
+
+### 2026-10-01 USB packet and lifecycle candidate
+
+Installed c9810a47 firmware received Ray Force successfully with capture closed.
+The subsequent input-only48kHz stereo16-bit recording lost both audio and CDC
+heartbeats after75.62 captured seconds. COM4 then failed configuration with
+Windows error31 even after capture closed. The partial WAV has peak10395 and
+zero clipped samples. This establishes a shared USB failure, not its exact cause.
+
+The new candidate replaces normal audio-IN/CDC-IN SDK polling writes with an
+audited single-packet commit, preserves pending capture packets on rejection,
+and invalidates them at stream transitions. The composite USB and peripheral
+tasks are pinned to CPU0 with the SDK's task-name prefix, matching USB/ALINK
+interrupt affinity. No synth, mix, sample-rate conversion or LPF changes are
+included. The prior meter-colour correction is inherited from the parent branch.
+
+All10 CTests,7 client checks,4 screenshot checks and the descriptor test pass.
+The packet helper receives100000 mixed submissions under the mocked registers.
+The pinned SDK composite link and10 linked corruption checks pass, including
+packet count/commit/IRQ restoration and both task affinity registrations.
+Reviewed SDK register accesses retain finite hardware-acknowledgement waits;
+this does not certify a hard real-time controller deadline.
+
+The private Ray Force host replay runs140 seconds with zero synth missing
+samples, rebuffers or modeled USB FIFO errors. A360-second stress replay covers
+29 stream restart/reset operations and7 deliberately injected producer stalls;
+those stalls cause7 rebuffers/448 missing frames, with zero USB FIFO errors or
+clipping. Host mocks do not reproduce the WL82 controller, DMA, dual-core
+scheduler or Windows USB driver.
+
+This candidate is unflashed. Hardware acceptance requires a complete Ray Force
+capture, repeated OBS source activation/deactivation and mute/unmute, concurrent
+CDC diagnostics/upload, USB reconnect and protected UBOOT recovery. CPU0 task
+consolidation also requires checking synth reserve, internal audio and screen
+FPS. Preserve the full readback-verified c9810a47 image for rollback and obtain
+authorization for the exact newly packaged image before physical flashing.

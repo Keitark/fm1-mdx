@@ -19,9 +19,10 @@ void replay_usb_note_sample(int16_t l,int16_t r){
 usb_dev usb_device2id(const struct usb_device_t *d){REQUIRE(d==&device);return 0;}
 struct usb_device_t *usb_id2device(usb_dev id){REQUIRE(!id);return &device;}
 u32 usb_g_iso_read(usb_dev id,u32 ep,void *p,u32 n,u32 last){REQUIRE(!id&&ep==1&&!p&&n==192&&!last);return 0;}
-u32 usb_g_iso_write(usb_dev id,u32 ep,void *p,u32 n){
+unsigned fm1_usb_packet_write(unsigned id,unsigned ep,const uint8_t *p,unsigned n,const volatile unsigned *epoch,unsigned expected){
     unsigned i;
-    REQUIRE(!id&&ep==1&&!p&&n==192&&dma[1]);
+    REQUIRE(!id&&ep==1&&p&&n==192&&dma[1]&&*epoch==expected);
+    memcpy(dma[1],p,n);
     /* Linear capture conversion cannot exceed the source's magnitude.
      * This checks the encoded bytes independently of the error counters. */
     for(i=0;i<n;i+=2){int value=(int16_t)(dma[1][i]|((unsigned)dma[1][i+1]<<8));REQUIRE((unsigned)abs(value)<=source_peak);}

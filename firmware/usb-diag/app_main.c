@@ -19,10 +19,16 @@ const struct irq_info irq_info_table[]={{-1,-1,-1}};
 const struct task_info task_info_table[]={
     {"app_core",15,4096,1024},{"sys_event",29,512,0},
     {"systimer",14,256,0},{"sys_timer",9,512,128},
-    {"usb_diag",10,2048,0},
+    /* SDK #C0 names bind tasks to the USB/ALINK IRQ core. task_create still
+     * looks up the plain name. Packet commit and stream teardown must share it. */
+    {"#C0usb_diag",10,2048,0},
 #ifdef FM1_PERIPHERAL_TESTS
 #if defined(FM1_NES_PLAYER) || defined(FM1_MDX_PLAYER)
+#ifdef FM1_USB_AUDIO
+    {"#C0peripheral",8,4096,0},
+#else
     {"peripheral",8,4096,0},
+#endif
 #else
     {"peripheral",8,2048,0},
 #endif
@@ -36,6 +42,7 @@ static char tx[1024];
 static unsigned tx_r,tx_w;
 extern int fm1_cdc_ready(usb_dev id);
 extern volatile unsigned fm1_cdc_generation;
+extern u32 fm1_cdc_write_packet(usb_dev id,u8 *data,u32 size,unsigned generation);
 
 static void reply(void *ctx,const char *s) {
     unsigned n=strlen(s),i; (void)ctx;
@@ -110,10 +117,11 @@ static void fm1_usb_task(void *arg) {
                 reply(NULL,s);
             }
             /* Short packets avoid an extra potentially blocking ZLP write.
-             * One owner/task for CDC data mutex; ISR never transmits. */
+             * Pass the queue's session, so reconnect during reply formatting
+             * cannot send an old response into the new CDC session. */
             n=tx_w-tx_r; if(n>sizeof(out))n=sizeof(out);
             for(i=0;i<n;i++)out[i]=tx[(tx_r+i)%sizeof(tx)];
-            if(n)tx_r+=cdc_write_data(FM1_USB_CONTROLLER,out,n);
+            if(n)tx_r+=fm1_cdc_write_packet(FM1_USB_CONTROLLER,out,n,generation);
         }
         os_time_dly(1);
     }

@@ -61,20 +61,51 @@ PC playback has a32-frame start/recovery/release ramp (about0.73ms at the DAC)
 to avoid a full-scale step when an application stops supplying packets. This
 does not alter the MDX recording tap.
 
-The new candidate checks the hardware TxPktRdy flag before encoding into the
-capture DMA buffer. A busy completion does not drain the sample FIFO, overwrite
-that buffer, or call the SDK's potentially polling writer from the IRQ. Stream
-stop flushes the direction's FIFO using the pinned SDK CSR definitions; start
-configures DMA with completion interrupts masked, primes capture, then enables
-its interrupt. Both directions retain192-byte whole stereo-frame packets.
+The packet submission candidate replaces normal audio-IN and CDC-IN calls to
+`usb_g_iso_write`/`usb_g_bulk_write` with `fm1_usb_packet_write`. The pinned SDK's
+shared `usb_g_ep_write` polls TxPktRdy using a jiffies deadline; these two
+application paths no longer enter it. USB0 EP1 accepts exactly192 bytes; CDC
+EP3 accepts1..63 bytes. A busy, unconfigured, missing-DMA or stale-session
+submission returns zero without changing DMA bytes or the packet count register.
 
-`python firmware/mdx/usb_client.py usb --port COM4` reports actual full SDK
-submissions, short submissions, busy callbacks, start/stop counts and last CSR/
-write result. Existing `tx` counts encoder attempts, not successful transport.
-Even a full SDK return only verifies submission, not bytes received by Windows.
-Busy-DMA preservation, short writes and restart flushing have host regressions.
-They address a concrete lifecycle risk; a bench test must still establish
-whether the observed OBS mute/unmute byte corruption is fixed.
+The helper copies into the already configured DMA buffer, writes the exact
+USB0 TXCNT and performs a memory synchronization before setting TxPktRdy. It
+holds the SDK's counted IRQ mask inside a saved caller IRQ state, so nested
+register helpers cannot unmask interrupts before commit. This is one bounded
+packet attempt, not a general replacement for SDK USB control/RX handling;
+SDK register access still uses its finite hardware-acknowledgement waits.
+
+The composite build binds the USB control task and the peripheral/synth owner
+to CPU0 using the pinned SDK's `#C0` task-table prefix. USB and ALINK interrupts
+already use CPU0. This keeps packet commit and stream teardown on the same core;
+the CPU-local IRQ guard would not serialize a task running on CPU1. The linked
+audit verifies both task-table names. This consolidates task load on CPU0, so
+real render reserve and screen FPS must be checked after installation.
+
+Capture uses a separate192-byte CPU staging packet. If submission is rejected,
+it retains that packet for retry rather than consuming another48 source frames.
+Every capture stop/start/reset invalidates the epoch and clears staging, so an
+old pending packet cannot enter a new stream. An early busy check also avoids
+unnecessary encoding. Stream setup masks completion interrupts, flushes and
+configures DMA, primes capture, then enables the callback.
+CDC submissions carry the reply queue's session generation, preventing a reset
+during command processing or formatting from sending an old reply after reconnect.
+
+`python firmware/mdx/usb_client.py usb --port COM4` reports accepted submissions,
+rejected/short submissions, busy callbacks, start/stop counts, last CSR/write
+result, capture epoch and pending byte count. Existing `tx` counts encoder
+attempts, not successful transport. Acceptance by the helper is not proof of
+bytes received by Windows. Tests cover100000 mixed audio/CDC submissions,
+busy and stale-session cancellation, DMA headroom, nested IRQ restoration,
+pending retry and restart discard.
+
+On installed c9810a47 firmware, the Ray Force full-recording attempt stopped
+receiving USB audio and CDC heartbeats after75.62 captured seconds; COM4 then
+failed Windows configuration with error31. The partial WAV peak was10395 with
+zero clipping. The exact halt cause has not been established. This new packet
+path is an unflashed candidate and does not yet establish that the stall or OBS
+mute/unmute corruption is fixed. Full-song and repeated restart bench checks
+remain required.
 
 `python firmware/mdx/usb_client.py timing --port COM4` reports coarse DAC
 callback spacing, callbacks separated by at least20ms, minimum primed queue

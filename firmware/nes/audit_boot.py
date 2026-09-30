@@ -7,6 +7,7 @@ import struct
 from embed_rom50 import ROMS
 from audit_power import audit_power, call_target
 from audit_pre_os import audit_pre_os
+from audit_usb_packet import audit_usb_packet
 
 XIP=0x02000120
 RAM=0x01c00000
@@ -217,9 +218,15 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
             # Pocket UI link: ota_status0x1c4e7d0 +404 = trace0x1c4e964;
             # reviewed wrapper store0x2002774 d1 ec 07 19. Same46-byte body.
             if usb_audio:encodings.update({404:'d1 ec 07 19'})
+            # CDC-only packet link: ota_status0x1c4c060 +404 = trace0x1c4c1f4;
+            # reviewed store0x2002768 d1 ec 07 19, same wrapper/marker.
+            if usb_mdx and not usb_audio:encodings.update({404:'d1 ec 07 19'})
             # Note-meter link: ota_status0x1c4e2d0 +412 = trace0x1c4e46c;
             # reviewed wrapper store0x200276c d1 ec 0f 19. Body unchanged.
             if usb_audio:encodings.update({412:'d1 ec 0f 19'})
+            # Packet staging link: trace0x1c4e474 = ota_status+420; reviewed
+            # wrapper store0x200276c d1 ec 07 1a, same46-byte wrapper/marker.
+            if usb_audio:encodings.update({420:'d1 ec 07 1a'})
             require(delta in encodings,'USB trace merged-global offset changed: '+str(delta))
             struct.pack_into('<I',expected_wrapper,4,value('ota_status'))
             expected_wrapper[14:16]=bytes.fromhex(encodings[delta])
@@ -284,8 +291,8 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
     task_table=value('task_info_table')
     expected_tasks=(('app_core',15,4096,1024),('sys_event',29,512,0),
                     ('systimer',14,256,0),('sys_timer',9,512,128),
-                    (('usb_diag',10,2048,0) if usb_only else ('fm1_nes',10,4096,0)))
-    if usb_peripheral_tests:expected_tasks+=(('peripheral',8,4096 if (usb_nes or usb_mdx) else 2048,0),)
+                    (('#C0usb_diag',10,2048,0) if usb_only else ('fm1_nes',10,4096,0)))
+    if usb_peripheral_tests:expected_tasks+=((('#C0peripheral' if usb_audio and (usb_nes or usb_mdx) else 'peripheral'),8,4096 if (usb_nes or usb_mdx) else 2048,0),)
     require(symbols['task_info_table'][1]==20*(len(expected_tasks)+1),
             'SDK/NES task table size changed')
     for i,(name,priority,stack,queue) in enumerate(expected_tasks):
@@ -336,6 +343,7 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
         descriptor=bytes((18,1,0,2,2,2,1,64,0x54,0x36,0x55,0x51,0,2,1,2,0,1))
         if usb_audio:descriptor=bytes((18,1,0,2,0xef,2,1,64,0x54,0x36,0x55,0x51,3,2,1,2,0,1))
         if usb_audio:
+            audit_usb_packet(symbols,code_at)
             for name in ('fm1_uac_desc_config','fm1_usb_audio_dac','fm1_usb_audio_stop','fm1_uac_descriptor','fm1_uac_dma'):
                 require(name in symbols,'Missing composite audio component '+name)
             audio_dma,audio_size,_=symbols['fm1_uac_dma']
