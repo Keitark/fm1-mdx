@@ -125,3 +125,26 @@ After0284ee8, live diagnostics measured20FPS, keys=0, valid/progressing ADC
 and no reported synth underruns/rebuffering. The50ms view interval (20FPS) and per-row audio-reserve gate remain unchanged
 at the user's request. Meter movement still requires bench observation. USB error31
 recurred during a Laydock upload; that transport fault is still unresolved.
+
+## 2026-10-01 elapsed-time meter correction
+
+Commit27f6c39 adds the MMDSP-inspired envelopes described above. All9 CTests,
+7 client checks,4 screenshot checks, the descriptor test and5 linked corruption
+checks pass. The192528-byte application links with the pinned SDK and audits.
+A180-second private Laydock replay at+500ppm reports zero missing frames,
+rebuffers and USB FIFO errors;3598 modeled views,71642 written and791878 skipped
+rows. This is a host wire-cost model, not a hardware FPS or Windows USB test.
+
+Image2065596f902a109bf054ac0aca46068a3b53051f0e16829b2e755c5ef242c4c9
+was installed in48 directory-last sectors and the full1MiB readback matches.
+The confirmed zero-row-offset imageca04b4e9... is preserved privately for rollback.
+A single reset and successful CDC boot observation show advancing audio frames
+with zero reported underruns/peripheral errors. Physical meter timing acceptance
+and the independent capture-active serial/USB noise investigation remain open.
+
+The capture-closed reload ofLAY0_V.MDX andLAY_V.PDX completed in88.1s and
+PLAY was acknowledged. Two live readings show ready/running, frames advancing,
+keys=0, valid ADC, zero reported synth underruns/rebuffers/peripheral errors and
+14.5-17.8FPS. Scanner completions continue; USB capture submissions are zero.
+This verifies playback/CDC progress with capture closed, not the unresolved
+simultaneous capture/CDC case or the subjective reference-meter match.
