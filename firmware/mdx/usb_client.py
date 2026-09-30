@@ -15,7 +15,7 @@ HELLO='FM1DIAG/1 MDX-KARAOKE/1 RAM-UPLOAD UBOOT=SERIAL COMMIT=BLOCKED'
 SCREEN_PALETTE=[(4,4,16),(10,10,30),(55,55,100),(20,20,45),(30,30,70),
                 (210,210,235),(150,150,180),(210,210,245),(245,245,255),
                 (45,30,110),(70,70,140),(110,110,180),(150,150,210),
-                (70,80,150),(150,170,230),(235,175,80)]
+                (82,82,173),(150,170,230),(235,175,80)]
 def screenshot_png(data,bits=2):
     if bits not in (2,4) or len(data)!=240*240*bits//8:raise ValueError('Unexpected screenshot size/depth')
     if bits==2 and any((b>>shift)&3==3 for b in data for shift in (6,4,2,0)):

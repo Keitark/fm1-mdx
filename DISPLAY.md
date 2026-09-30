@@ -7,6 +7,11 @@ removed. Physical addressing remains rows0..239. The violet palette, karaoke
 highlight and SELECT/FX/PLAY-STOP controls remain. Full part velocity uses27
 steps, leaving the original top headroom within the28-step plot.
 
+Part-volume and spectrum-maximum lines use MMDSP's blue-violet text palette1
+(RGB5 10/10/21, converted to RGB565) rather than white. Karaoke markers retain
+amber. The screenshot client expands the same palette as the LCD renderer.
+Source: https://github.com/gaolay/MMDSP/blob/master/src/SPRITE.s
+
 ## Reference review and motion
 
 The Ray Force reference is https://www.youtube.com/watch?v=UmHjuRGaTlU

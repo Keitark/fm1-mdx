@@ -7,7 +7,7 @@ const uint16_t fm1_screen_palette[16]={
     RGB(4,4,16),RGB(10,10,30),RGB(55,55,100),RGB(20,20,45),
     RGB(30,30,70),RGB(210,210,235),RGB(150,150,180),RGB(210,210,245),
     RGB(245,245,255),RGB(45,30,110),RGB(70,70,140),RGB(110,110,180),
-    RGB(150,150,210),RGB(70,80,150),RGB(150,170,230),RGB(235,175,80)};
+    RGB(150,150,210),RGB(82,82,173),RGB(150,170,230),RGB(235,175,80)};
 /*5x7 glyphs, columns low bit at top; all labels use a complete ASCII subset. */
 static const uint8_t letters[26][5]={
  {126,17,17,17,126},{127,73,73,73,54},{62,65,65,65,34},{127,65,65,34,28},
@@ -51,7 +51,8 @@ static unsigned plot_color(uint8_t level,uint8_t cap,unsigned d,unsigned muted) 
     unsigned amount=steps(level),marker=steps(cap),height=(marker*PLOT_HEIGHT+PLOT_STEPS-1)/PLOT_STEPS;
     unsigned unit=d*PLOT_STEPS/PLOT_HEIGHT,color=3;
     if(unit<amount)color=muted?15:unit<9?(d&1?9:10):unit<19?(d&1?10:11):(d&1?11:14);
-    if(height && d==height-1)color=muted?15:8;
+    /* MMDSP text palette1: RGB5(10,10,21), a blue-violet marker. */
+    if(height && d==height-1)color=muted?15:13;
     return color;
 }
 static void label_copy(char *out,size_t capacity,const char *start,size_t n) {
