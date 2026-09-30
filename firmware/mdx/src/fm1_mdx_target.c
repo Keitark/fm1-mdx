@@ -30,7 +30,9 @@ static fm1_volume mdx_volume;
 static fm1_encoders encoders;
 static fm1_audio_startup envelope;
 static spinlock_t control_lock,audio_lock,input_lock;
-static struct {unsigned request,a,b,running,available,selected,mutes,frames,error,underruns,shutdown,quiescent;} control;
+static struct {unsigned request,a,b,running,available,selected,mutes,frames,error,underruns,shutdown,quiescent,panel;int octave,last_panel;} control;
+static int keyboard_octave;
+static unsigned keyboard_slot=41,keyboard_note;
 static int16_t ring[2048][2],block[FM1_MDX_BLOCK*2];
 static uint32_t rd,wr,underruns,frames;
 static unsigned primed,audio_enabled,scan_enabled,scan_ticks;
@@ -50,11 +52,21 @@ static int request(void *u,unsigned op,unsigned a,unsigned b) {
 }
 static void status(void *u,char *out,size_t n) {
     (void)u;
-    snprintf(out,n,"MDX running=%u pending=%u selected=%u mute=%04x frames=%u underruns=%u error=%u upload=%u ready=%u lcd=%d keys=%d audio=%d\n",
-             control.running,control.request,control.selected,control.mutes,control.frames,control.underruns,control.error,upload.active,upload.ready,lcd_error,key_error,audio_error);
+    snprintf(out,n,"MDX running=%u pending=%u selected=%u mute=%04x frames=%u underruns=%u error=%u upload=%u ready=%u lcd=%d keys=%d audio=%d oct=%d panel=%04x last=%d\n",
+             control.running,control.request,control.selected,control.mutes,control.frames,control.underruns,control.error,upload.active,upload.ready,lcd_error,key_error,audio_error,control.octave,control.panel,control.last_panel);
 }
 int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx) {
-    fm1_mdx_usb_io io={0,idle,request,status};int result;unsigned f=take(&control_lock);
+    fm1_mdx_usb_io io={0,idle,request,status};int result;unsigned f;
+    if(!strcmp(s,"MDX INPUT")) {
+        char out[224];size_t n;
+        f=take(&control_lock);
+        n=(size_t)snprintf(out,sizeof(out),"MDX INPUT oct=%d panel=%04x last=%d",control.octave,control.panel,control.last_panel);
+        release(&control_lock,f);f=take(&input_lock);
+        snprintf(out+n,sizeof(out)-n," enc=%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
+                 (long)encoders.count[0],(long)encoders.count[1],(long)encoders.count[2],(long)encoders.count[3],(long)encoders.count[4],(long)encoders.count[5],(long)encoders.count[6]);
+        release(&input_lock,f);reply(ctx,out);return 1;
+    }
+    f=take(&control_lock);
     result=fm1_mdx_usb_line(&upload,&io,s,now,reply,ctx);release(&control_lock,f);return result;
 }
 void fm1_mdx_usb_reset(void){unsigned f=take(&control_lock);fm1_mdx_usb_abort(&upload);release(&control_lock,f);}
@@ -96,7 +108,33 @@ static void publish(void) {
 static void silence(void) {
     unsigned f=take(&audio_lock);rd=wr=0;primed=0;release(&audio_lock,f);
     fm1_mdx_stop(&player);
+    keyboard_slot=41;
     f=take(&control_lock);control.running=0;release(&control_lock,f);
+}
+static void panel_edges(uint64_t down,uint64_t up,uint64_t held) {
+    unsigned f,i,running;
+    /* Panel order: OCT-/OCT+, FX/SEL/ENV/LFO/EDIT/GLO,
+       HOME/SAVE/ARP/SEQ/PLAY-STOP/REC. Slot labels are bench-checkable below. */
+    if((down&3)==1 && keyboard_octave>-3)keyboard_octave--;
+    else if((down&3)==2 && keyboard_octave<2)keyboard_octave++;
+    f=take(&control_lock);running=control.running;
+    control.octave=keyboard_octave;control.panel=(unsigned)(held&0x3fff);
+    for(i=0;i<14;i++)if((down>>i)&1)control.last_panel=(int)i;
+    if(!upload.active && !control.request) {
+        if(down&(UINT64_C(1)<<12))request(0,running?FM1_MDX_STOP:(uploaded_song&&upload.ready?FM1_MDX_PLAY:FM1_MDX_DEMO),0,0);
+        else if(down&4)request(0,FM1_MDX_MUTE,player.selected,!(player.mute_mask&(1u<<player.selected)));
+    }
+    release(&control_lock,f);
+    if(!running)return;
+    /* Release the pitch captured on key-down, even after an octave change.
+       An older key release must not silence the latest monophonic owner. */
+    if(keyboard_slot<41 && ((up>>keyboard_slot)&1)) {
+        fm1_mdx_note(&player,keyboard_note,0);keyboard_slot=41;
+    }
+    for(i=14;i<41;i++)if((down>>i)&1) {
+        unsigned note=(unsigned)(53+(int)i-14+12*keyboard_octave);
+        if(!fm1_mdx_note(&player,note,1)){keyboard_slot=i;keyboard_note=note;}
+    }
 }
 static void shutdown(void) {
     unsigned f;
@@ -129,6 +167,8 @@ static void action(unsigned op,unsigned a,unsigned b) {
 static uint16_t glyph(char c) {
     static const uint16_t digits[10]={0x7b6f,0x2492,0x73e7,0x73cf,0x5bc9,0x79cf,0x79ef,0x7249,0x7bef,0x7bcf};
     if(c>='0'&&c<='9')return digits[c-'0'];
+    if(c=='B')return 0x7bae;
+    if(c=='C')return 0x7927;
     switch(c){case 'A':return 0x2bed;case 'D':return 0x6b6e;case 'E':return 0x79e7;case 'F':return 0x79e4;case 'I':return 0x7497;case 'K':return 0x5bad;case 'L':return 0x4927;case 'M':return 0x7fed;case 'N':return 0x7b6d;case 'O':return 0x7b6f;case 'P':return 0x7be4;case 'R':return 0x7bad;case 'S':return 0x79cf;case 'T':return 0x7492;case 'U':return 0x5b6f;case 'X':return 0x5aad;case '-':return 0x01c0;default:return 0;}
 }
 static char ui[6][40];
@@ -137,8 +177,8 @@ static void ui_text(void) {
     snprintf(ui[1],40,"%s",uploaded_song?"USB RAM":"FLASH DEMO");
     snprintf(ui[2],40,"TRACK %u %s",player.selected+1,(player.mute_mask&(1u<<player.selected))?"KARAOKE":"MDX");
     for(i=0;i<8;i++)ui[3][i]=(player.mute_mask&(1u<<i))?'-':(char)('1'+i);ui[3][8]=0;
-    snprintf(ui[4],40,"KNOB 1 TRACK  KEY 2 MUTE");
-    snprintf(ui[5],40,"KEY 3 PLAY STOP");
+    snprintf(ui[4],40,"KNOB 1 TRACK FX MUTE");
+    snprintf(ui[5],40,"PLAY STOP  OCT %d",keyboard_octave);
 }
 static int ui_row(unsigned y) {
     unsigned x,line=y/24,gy=(y%24)/3;
@@ -170,7 +210,7 @@ static void fm1_peripheral_task(void *u) {
     audio_error=iis_open(&pd,0);
     if(!audio_error){iis_set_dec_data_handler(0,audio_output,0);audio_error=iis_set_sample_rate(FM1_MDX_RATE,0);}
     if(!audio_error){audio_enabled=1;request_irq(IRQ_ALNK_IDX,3,fm1_test_alink_isr,0);iis_channel_on(8,0);}
-    f=take(&control_lock);control.available=1;control.running=1;release(&control_lock,f);
+    f=take(&control_lock);control.available=1;control.running=1;control.last_panel=-1;release(&control_lock,f);
     action(FM1_MDX_DEMO,0,0);
     for(;;) {
         unsigned op,a,b,running,queued,closing;uint32_t now=timer_get_ms();uint8_t rows[11];int scan_rc;
@@ -190,20 +230,12 @@ static void fm1_peripheral_task(void *u) {
         }
         f=take(&input_lock);scan_rc=scan_enabled?fm1_wl82_keyscan_async_raw(&scanner,rows):FM1_NES_BUSY;release(&input_lock,f);
         if(!scan_rc) {
-            uint64_t keys=fm1_stock_decode_keys(rows),down,up;unsigned i;
-            fm1_encoders_sample(&encoders,rows);
+            uint64_t keys=fm1_stock_decode_keys(rows),down,up;
+            f=take(&input_lock);fm1_encoders_sample(&encoders,rows);release(&input_lock,f);
             if(keys!=candidate){candidate=keys;changed=now;}
             if((uint32_t)(now-changed)>=10 && candidate!=stable) {
                 down=candidate&~stable;up=stable&~candidate;stable=candidate;
-                f=take(&control_lock);running=control.running;
-                if(!upload.active && !control.request) {
-                    if(down&1)request(0,FM1_MDX_SELECT,(player.selected+7)%8,0);
-                    else if(down&2)request(0,FM1_MDX_SELECT,(player.selected+1)%8,0);
-                    else if(down&4)request(0,FM1_MDX_MUTE,player.selected,!(player.mute_mask&(1u<<player.selected)));
-                    else if(down&8)request(0,running?FM1_MDX_STOP:(uploaded_song&&upload.ready?FM1_MDX_PLAY:FM1_MDX_DEMO),0,0);
-                }
-                release(&control_lock,f);
-                if(running){for(i=14;i<41;i++)if((up>>i)&1)fm1_mdx_note(&player,53+i-14,0);for(i=14;i<41;i++)if((down>>i)&1)fm1_mdx_note(&player,53+i-14,1);}
+                panel_edges(down,up,stable);
             }
             if(encoders.count[0]!=encoder) {
                 int step=encoders.count[0]>encoder?1:-1;encoder=encoders.count[0];

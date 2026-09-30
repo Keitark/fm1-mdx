@@ -2,6 +2,7 @@ from pathlib import Path
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 HERE=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(HERE))
 import usb_client as client
@@ -17,6 +18,26 @@ class Pipe:
     def __exit__(self,*args):
         self.proc.stdin.close();self.proc.wait(timeout=5);self.proc.stdout.close()
 class ClientTests(unittest.TestCase):
+    def test_identity_ignores_partial_reconnect_diagnostic_line(self):
+        class Port:
+            def __init__(self):self.data=bytearray(('uptime=12 boot=serial-uboot\n# diagnostic\n'+client.HELLO+'\n').encode())
+            def write(self,data):return len(data)
+            def read(self,n):
+                result=bytes(self.data[:n]);del self.data[:n];return result
+        client.confirm_identity(Port())
+
+    def test_identity_retries_only_read_only_hello(self):
+        with patch.object(client,'exchange',side_effect=[TimeoutError(),client.HELLO]) as exchange,patch.object(client.time,'sleep'):
+            client.confirm_identity(object())
+            self.assertEqual(exchange.call_count,2)
+            self.assertTrue(all(call.args[1]=='HELLO' for call in exchange.call_args_list))
+        with patch.object(client,'exchange',side_effect=TimeoutError()) as exchange,patch.object(client.time,'sleep'):
+            with self.assertRaises(TimeoutError):client.confirm_identity(object())
+            self.assertEqual(exchange.call_count,3)
+        with patch.object(client,'exchange',return_value='different firmware') as exchange:
+            with self.assertRaisesRegex(RuntimeError,'identity mismatch'):client.confirm_identity(object())
+            self.assertEqual(exchange.call_count,1)
+
     def test_real_parser_upload_and_karaoke(self):
         data=client.bundle((HERE/'samples/FM1DEMO.MDX').read_bytes(),(HERE/'samples/FM1DEMO.PDX').read_bytes())
         with Pipe() as port:

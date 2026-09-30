@@ -7,7 +7,7 @@ Date:2026-09-30 (Asia/Tokyo).
 `python scripts/build.py host` passed in the standalone repository:
 
 - Two native CTest groups: player/karaoke/USB contracts and FM1 task lifecycle.
-- Four Python integration checks using the real C CDC line parser, with
+- Six Python checks including integration with the real C CDC line parser, with
   fragmented writes from the PC upload client.
 - Original demo MDX/PDX renders to44.1kHz stereo PCM on the host.
 - Muted playback cannot key-off a manually held FM note; parameters continue.
@@ -42,16 +42,64 @@ packaging and physical installation belong to the separate FM1 bench workflow.
 
 ## Remaining bench gates
 
-- Confirm this exact image boots, shows the menu and enumerates CDC.
 - Confirm physical button/encoder assignments and keyboard pitch.
 - Observe DAC format/clocks and audition low-gain stereo output.
 - Run a sustained demo and record underruns; the host does not measure the
   target's synthesis throughput or display/USB scheduling margins.
 - Hold a live note through playback rests and patch changes while muted.
-- Load a real MDX with its PDX over USB, play it and verify disconnect behavior.
+- Load representative external MDX/PDX songs and verify disconnect behavior.
 - Verify STOP and serial UBOOT entry on hardware with the known rollback ready.
 
-No device flash, reset, port opening or live hardware read occurred in this run.
+## First hardware installation
+
+The user authorized flashing on2026-09-30. The separate existing FM1 bench
+writer installed the application built from commit
+`92a23169cea0f9cf0b5fe5bb80c697885e6b4d94`, with a verified NES rollback saved
+privately. Application SHA256:
+`8fbd8dbf270944a5bdc53555e65f435952b84c0cca6f0d5709f9810acda4858a`.
+
+- All53 changed sectors verified, with the application directory written last.
+- One full1MiB readback exactly matched the packaged candidate. Boot,
+  configuration and reserved bytes were preserved.
+- A single reset was issued. The existing reset CLI then raised its known text
+  decoding error. Successful serial boot observation resolved the latch;
+  no second reset or flash retry was issued.
+- COM10 reported `MDX-KARAOKE/1`, with audio frames698048 to1140160,
+  zero underruns and zero player/LCD/keys/audio error fields.
+- The user confirmed both the MDX screen and demo audio work.
+- The original demo MDX/PDX bundle was uploaded into RAM over CDC, then played.
+  Selection, track0 mute, manual C4 on/off, unmute and return to the flash demo
+  were acknowledged. While muted, frames advanced18894400 to19026816,
+  with zero underruns and errors. This confirms control/transport operation;
+  the held-note/patch-change sound still needs a focused listening test.
+- The player was left running the built-in flash demo with no tracks muted.
+
+Reopening CDC exposed occasional lost first commands and partial diagnostic
+lines. The PC client now allows DTR to settle, accepts a complete firmware
+identity line, and retries only read-only HELLO up to three times. Song/control
+commands are never automatically retried. Host checks pass after this fix.
+
+The private deployment receipts, serial log and rollback remain in the parent
+FM1 bench workspace; no unit-specific images are committed here.
+
+## Panel correction candidate
+
+The user found FX toggles karaoke, SEL toggles playback and OCT−/OCT+ do not
+shift pitch in the first image. The correction moves playback to panel slot12,
+following the user's stated button order; OCT−/OCT+ on slots0/1 now shift new
+keyboard notes by12 semitones per press, bounded to−3..+2 octaves. FX remains
+karaoke and encoder0 is assigned to the SELECT knob for track selection.
+`MDX INPUT` reports panel slots and all encoder counters for physical checks.
+
+Host task tests cover PLAY/STOP, unused SEL, octave bounds, held-note release
+after shifting, older-key releases, and encoder0 track selection. Both CTest
+groups and six Python checks passed. The linked180,272-byte application passed
+the static audit with SHA256
+`386b9a1fee54d7c9e5e3953cdf6e11bd04cae38ee6b9e50856f6ac028d5696dc`.
+The unchanged startup wrapper writes its trace at `ota_status+336`; that exact
+store was reviewed before adding it to the auditor's encoding allowlist.
+Installation and physical panel confirmation of this correction are pending.
+
 Persistent uploaded songs, drag-and-drop mass storage and MIDI input remain
 unimplemented. PCM playback uses bounded48kHz-to44.1kHz sample resampling;
 high-quality PDX interpolation and broad MDX compatibility need further tests.

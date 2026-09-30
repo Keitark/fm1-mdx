@@ -11,7 +11,7 @@ IDENTITY=(0x3654,0x5155)  # private lab use of the pinned SDK identity
 HELLO='FM1DIAG/1 USB-ONLY UPDATE=VERIFY-ONLY COMMIT=BLOCKED'
 LIMIT=512*1024
 
-def exchange(port,command,deadline=3):
+def exchange(port,command,deadline=3,expected_prefix=None):
     data=(command+'\n').encode('ascii')
     if port.write(data)!=len(data):raise RuntimeError('Short serial write; transfer aborted')
     end=time.monotonic()+deadline;line=bytearray()
@@ -22,6 +22,9 @@ def exchange(port,command,deadline=3):
             answer=line.decode('ascii',errors='strict').rstrip('\r');line.clear()
             if answer.startswith('#') or not answer:continue
             if answer.startswith('ERR'):raise RuntimeError(answer)
+            # CDC may reconnect midway through a periodic diagnostic line.
+            # During HELLO, wait for a complete identity line before accepting it.
+            if expected_prefix is not None and not answer.startswith(expected_prefix):continue
             return answer
         line.extend(c)
         if len(line)>256:raise RuntimeError('Oversized reply; wrong device or lost framing')
