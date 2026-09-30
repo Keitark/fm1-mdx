@@ -233,7 +233,10 @@ remains preserved separately.
 
 OutRun was reloaded into volatile RAM with all tracks unmuted. New live counters
 confirm genuine MDX buffer underruns and rebuffering, while the USB capture
-underrun/overrun and packet-error counters remain zero. A fresh240x240 completed
+underrun/overrun and packet-error counters remain zero. A bounded input-only capture produced1,440,000 stereo48kHz frames. Over the
+31.7-second surrounding observation interval, MDX added6,080 missing frames,
+95 rebuffer events and154,816 rebuffer-silence frames. USB capture added zero
+underruns, overruns or bad packets. A fresh240x240 completed
 screen shows PLAY / USB RAM. The first correction is not sufficient for audible
 acceptance. The old zero counter concealed gaps rather than proving headroom.
 
