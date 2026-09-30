@@ -71,6 +71,17 @@ hashes and static audit. The application payload is **not a flash/update file**.
 The audit retains the SDK startup/integrity checks and IRQ-based UBOOT recovery.
 There is no firmware flasher or stock-layout packager in this repository.
 
+An optional composite USB Audio Class1 + CDC profile adds computer playback
+through FM1 and MDX recording to the computer at48kHz stereo16-bit PCM:
+
+```powershell
+python scripts/build.py firmware --usb-audio
+```
+
+The separately built candidate is in `build/target-audio`. Host and link checks
+pass; it has not been flashed or qualified on hardware. See
+[USB_AUDIO.md](USB_AUDIO.md) for routing, conversion and bench checks.
+
 ## USB song loading
 
 After this candidate has been installed and its CDC port confirmed, install

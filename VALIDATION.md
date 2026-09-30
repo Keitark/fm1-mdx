@@ -109,3 +109,30 @@ Physical panel/knob confirmation of the correction is pending.
 Persistent uploaded songs, drag-and-drop mass storage and MIDI input remain
 unimplemented. PCM playback uses bounded48kHz-to44.1kHz sample resampling;
 high-quality PDX interpolation and broad MDX compatibility need further tests.
+
+## Optional composite USB audio candidate
+
+The UAC1 + CDC profile is source-built and unflashed. Four native CTest groups,
+six Python client checks and the actual descriptor-tree check pass. Audio tests
+simulate60 seconds at0 and±500ppm DAC clock drift with no FIFO underrun/overrun
+after priming. Callback tests cover DMA alignment/bounds, persistent EP0 replies,
+interface alternate settings, reset and complete audio disarm before UBOOT.
+
+Both profiles link and pass the static audit. The CDC-only application remains
+byte-identical to the currently installed control candidate:180,272 bytes,
+SHA256 `386b9a1fee54d7c9e5e3953cdf6e11bd04cae38ee6b9e50856f6ac028d5696dc`.
+The composite application is183,088 bytes with189,932 bytes of SDK heap before
+runtime allocations, SHA256
+`f8be2cc67c29ba1b2126e0a858d3bcc7009d8cb9d5d68a22c42e4890b2fa0dda`.
+
+The composite auditor checks the173-byte UAC descriptor,512-byte aligned
+internal-RAM DMA pool and required audio hooks. LTO moved the boot trace to
+`ota_status+344`, the power gateway state to+28, and power state operands to
++224/+236/+260. These exact destinations and instruction encodings were checked
+against symbols and disassembly. The normalized1,082-byte SDK power initializer
+still matches its reviewed hash. Corruption tests reject changed descriptors,
+power destinations and gateway instructions.
+
+Hardware enumeration, duplex sound, conversion quality, latency, scheduling
+headroom, concurrent CDC operation and recovery are pending. No USB audio
+performance claim follows from the offline checks. See[USB_AUDIO.md](USB_AUDIO.md).

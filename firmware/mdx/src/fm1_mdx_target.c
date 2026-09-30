@@ -19,6 +19,9 @@
 #include "peripheral_logic.h"
 #include "peripherals.h"
 #include "display_test.h"
+#ifdef FM1_USB_AUDIO
+#include "target.h"
+#endif
 #include <stdio.h>
 #include <string.h>
 extern const unsigned char fm1_demo_mdx[],fm1_demo_pdx[];
@@ -57,6 +60,9 @@ static void status(void *u,char *out,size_t n) {
 }
 int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx) {
     fm1_mdx_usb_io io={0,idle,request,status};int result;unsigned f;
+#ifdef FM1_USB_AUDIO
+    if(!strcmp(s,"MDX AUDIO")){char out[224];fm1_usb_audio_status(out,sizeof(out));reply(ctx,out);return 1;}
+#endif
     if(!strcmp(s,"MDX INPUT")) {
         char out[224];size_t n;
         f=take(&control_lock);
@@ -90,6 +96,9 @@ static void audio_output(void *ctx,u8 *data,int len,u8 ch) {
     }
     if(primed && wr==rd)primed=0;
     {unsigned f=take(&input_lock);envelope.target_q7=mdx_volume.valid?mdx_volume.target:0;release(&input_lock,f);}
+#ifdef FM1_USB_AUDIO
+    fm1_usb_audio_dac(out,64);
+#endif
     fm1_audio_startup_process24(&envelope,out);frames+=64;
 }
 ___interrupt
@@ -138,6 +147,9 @@ static void panel_edges(uint64_t down,uint64_t up,uint64_t held) {
 }
 static void shutdown(void) {
     unsigned f;
+#ifdef FM1_USB_AUDIO
+    fm1_usb_audio_stop();
+#endif
     silence();
     if(scan_timer>0)sys_usec_timer_del(scan_timer);
     bit_clr_ie(IRQ_SPI2_IDX,0);f=take(&input_lock);scan_enabled=0;

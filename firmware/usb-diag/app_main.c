@@ -8,6 +8,9 @@
 #include "boot_trace.h"
 #include "protocol.h"
 #include "boot_entry.h"
+#ifdef FM1_USB_AUDIO
+#include "target.h"
+#endif
 #ifdef FM1_PERIPHERAL_TESTS
 #include "peripherals.h"
 #endif
@@ -44,6 +47,9 @@ static void fm1_usb_task(void *arg) {
     uint8_t rx[64],out[63]; unsigned generation=0,i,n; uint32_t last=0;
     (void)arg; fm1_boot_trace_mark(FM1_TRACE_WORKER); fm1_usb_stage=2;
     /* Explicit single-controller candidate. No host/OTG detection or VBUS drive. */
+#ifdef FM1_USB_AUDIO
+    fm1_usb_audio_init();
+#endif
     fm1_usb_error=usb_device_mode(FM1_USB_CONTROLLER,CDC_CLASS);
     if(fm1_usb_error) { fm1_usb_stage=0xff; for(;;)os_time_dly(100); }
     fm1_usb_stage=3;

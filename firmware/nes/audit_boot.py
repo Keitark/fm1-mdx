@@ -19,7 +19,8 @@ def require(condition,message):
     if not condition: raise ValueError(message)
 
 
-def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,require_boot_trace=False,require_board_power=False,require_screen_first=False,usb_only=False,usb_peripheral_tests=False,usb_nes=False,usb_mdx=False):
+def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,require_boot_trace=False,require_board_power=False,require_screen_first=False,usb_only=False,usb_peripheral_tests=False,usb_nes=False,usb_mdx=False,usb_audio=False):
+    require(not usb_audio or usb_mdx,'Composite audio requires the MDX profile')
     require(not usb_nes or (usb_only and usb_peripheral_tests and rom=='smb1'),'NES CDC requires explicit SMB1 peripheral profile')
     require(not usb_mdx or (usb_only and usb_peripheral_tests and not usb_nes),'MDX requires a separate CDC peripheral profile')
     require(not usb_peripheral_tests or usb_only,'Peripheral diagnostic requires USB transport audit')
@@ -201,6 +202,9 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
             # Panel/octave link: ota_status0x1c4b910 +336 = trace0x1c4ba60;
             # reviewed store0x200276c: d1 ec 03 15 = [++r0=336]=r1.
             if usb_mdx:encodings.update({300:'d1 ec 0f 12',312:'d1 ec 0b 13',316:'d1 ec 0f 13',336:'d1 ec 03 15'})
+            # Composite link: ota_status0x1c4db50 +344 = trace0x1c4dca8;
+            # reviewed store0x200276c: d1 ec 0b 15. Wrapper otherwise unchanged.
+            if usb_audio:encodings.update({344:'d1 ec 0b 15'})
             require(delta in encodings,'USB trace merged-global offset changed: '+str(delta))
             struct.pack_into('<I',expected_wrapper,4,value('ota_status'))
             expected_wrapper[14:16]=bytes.fromhex(encodings[delta])
@@ -315,6 +319,16 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
         for name in ('cdc_read_data','cdc_write_data','fm1_cdc_ready','fm1_usb_dma','fm1_diag_feed'):
             require(name in symbols,'Missing USB diagnostic '+name)
         descriptor=bytes((18,1,0,2,2,2,1,64,0x54,0x36,0x55,0x51,0,2,1,2,0,1))
+        if usb_audio:descriptor=bytes((18,1,0,2,0xef,2,1,64,0x54,0x36,0x55,0x51,1,2,1,2,0,1))
+        if usb_audio:
+            for name in ('fm1_uac_desc_config','fm1_usb_audio_dac','fm1_usb_audio_stop','fm1_uac_descriptor','fm1_uac_dma'):
+                require(name in symbols,'Missing composite audio component '+name)
+            audio_dma,audio_size,_=symbols['fm1_uac_dma']
+            require(audio_size==512 and audio_dma%64==0 and bss[3]<=audio_dma and audio_dma+audio_size<=bss[3]+bss[5],
+                    'Audio DMA size/alignment/internal-RAM placement changed')
+            require(symbols['fm1_uac_descriptor'][1]==173 and hashlib.sha256(code_at(value('fm1_uac_descriptor'),173)).hexdigest()==
+                    '158d06cd620fe9bb8ab368b4694729a869ef9e986387837c2ce01636b62b3c10',
+                    'UAC1 interface/terminal/format/endpoint descriptor changed')
         require(code_at(value('fm1_usb_device_descriptor'),18)==descriptor,
                 'USB CDC device descriptor changed')
         require(code_at(value('fm1_usb_config_descriptor'),9)==bytes((9,2,0,0,0,1,0,0x80,50)),
@@ -418,7 +432,7 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
         addr,size,_=symbols['cartridge'];start=addr-XIP
         require(size==rom_size and 0<=start and start+size<=sections['.text'][5],'Cartridge is not wholly in XIP')
         require(hashlib.sha256(data(sections['.text'])[start:start+size]).hexdigest()==rom_sha,'Embedded cartridge hash mismatch')
-    power_report=audit_power(symbols,sections,code_at,required=require_board_power,usb_only=usb_only)
+    power_report=audit_power(symbols,sections,code_at,required=require_board_power,usb_only=usb_only,usb_audio=usb_audio)
     pre_os_report=audit_pre_os(symbols,code_at)
     require(not require_screen_first or power_report.get('screen_first',False),'Missing screen-first board hook')
     return {'static_audit':'passed','entry':hex(entry),'application_bytes':len(app),

@@ -1,0 +1,41 @@
+#define FM1_UAC_TARGET_HOST 1
+#include "target.c"
+#include <stdlib.h>
+#define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
+static struct usb_device_t device={USB_CONFIGURED};
+static unsigned phase,rx_length,tx_length,enabled;
+static u8 *dma[2];
+static void (*interrupts[2])(struct usb_device_t *,u32);
+static u32 (*handlers[5])(struct usb_device_t *,struct usb_ctrlrequest *);
+static void (*resets[5])(struct usb_device_t *,u32);
+void arch_spin_lock(spinlock_t *l){CHECK(!*l);*l=1;}
+void arch_spin_unlock(spinlock_t *l){CHECK(*l);*l=0;}
+usb_dev usb_device2id(const struct usb_device_t *d){CHECK(d==&device);return 0;}
+struct usb_device_t *usb_id2device(usb_dev id){CHECK(!id);return &device;}
+u32 usb_g_iso_read(usb_dev id,u32 ep,void *p,u32 n,u32 last){CHECK(!id && ep==1 && !p && n==192 && !last);return rx_length;}
+u32 usb_g_iso_write(usb_dev id,u32 ep,void *p,u32 n){CHECK(!id && ep==1 && !p && n==192);tx_length=n;return n;}
+void usb_clr_intr_txe(usb_dev id,u32 ep){CHECK(!id && ep==1);}
+void usb_clr_intr_rxe(usb_dev id,u32 ep){CHECK(!id && ep==1);}
+void usb_enable_ep(usb_dev id,u32 ep){CHECK(!id && ep==1);enabled++;}
+u32 usb_g_ep_config(usb_dev id,u32 ep,u32 type,u32 ie,u8 *p,u32 n){CHECK(!id && type==1 && ie==1 && n==192 && !((uintptr_t)p%64));dma[ep>>7]=p;return 0;}
+u32 usb_g_set_intr_hander(usb_dev id,u32 ep,void (*h)(struct usb_device_t *,u32)){CHECK(!id && (ep==1 || ep==0x81));interrupts[ep>>7]=h;return 0;}
+u32 usb_set_interface_hander(usb_dev id,u32 i,u32 (*h)(struct usb_device_t *,struct usb_ctrlrequest *)){CHECK(!id && i>=2 && i<5);handlers[i]=h;return i;}
+u32 usb_set_reset_hander(usb_dev id,u32 i,void (*h)(struct usb_device_t *,u32)){CHECK(!id && i>=2 && i<5);resets[i]=h;return i;}
+void usb_set_setup_phase(struct usb_device_t *d,u8 p){CHECK(d==&device);phase=p;}
+void *usb_get_setup_buffer(const struct usb_device_t *d){CHECK(d==&device);return device.setup;}
+u8 *usb_set_data_payload(struct usb_device_t *d,struct usb_ctrlrequest *r,const void *p,u32 n){CHECK(d==&device && p==device.setup && n==r->wLength && n<=2);return device.setup;}
+static void set(unsigned itf,unsigned alt){struct usb_ctrlrequest r={1,11,alt,itf,0};phase=99;handlers[itf](&device,&r);CHECK(phase==0);}
+int main(void) {
+    u8 desc[173];u32 itf=2;unsigned i;int32_t pcm[128]={0};
+    fm1_usb_audio_init();CHECK(fm1_uac_desc_config(0,desc,&itf)==173 && itf==5 && !memcmp(desc,fm1_uac_descriptor,173));
+    set(3,1);set(4,1);CHECK(bridge.out_active && bridge.in_active && interrupts[0] && interrupts[1] && enabled);
+    memset(dma[0],0,192);rx_length=192;interrupts[0](&device,1);CHECK(bridge.rx_packets==1 && bridge.playback.wr==48);
+    rx_length=193;interrupts[0](&device,1);CHECK(bridge.bad_packets==1);
+    for(i=0;i<5;i++)fm1_usb_audio_dac(pcm,64);interrupts[1](&device,1);CHECK(tx_length==192);
+    {struct usb_ctrlrequest r={0x81,10,0,4,1};handlers[4](&device,&r);CHECK(device.setup[0]==1);}
+    for(i=0;i<200;i++){struct usb_ctrlrequest r={0x21,1,0,3,(uint16_t)i};phase=99;handlers[3](&device,&r);CHECK(phase==7);}
+    resets[2](&device,2);CHECK(!bridge.out_active && !bridge.in_active && !interrupts[0] && !interrupts[1]);
+    set(3,1);set(4,1);fm1_usb_audio_stop();CHECK(!armed && !bridge.out_active && !bridge.in_active);
+    set(3,1);CHECK(!bridge.out_active && !interrupts[0]);
+    puts("PASS UAC target descriptor registration, alt settings, bounded DMA, EP0 lifetime, reset and UBOOT closure");return 0;
+}
