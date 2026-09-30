@@ -98,7 +98,13 @@ the static audit with SHA256
 `386b9a1fee54d7c9e5e3953cdf6e11bd04cae38ee6b9e50856f6ac028d5696dc`.
 The unchanged startup wrapper writes its trace at `ota_status+336`; that exact
 store was reviewed before adding it to the auditor's encoding allowlist.
-Installation and physical panel confirmation of this correction are pending.
+The correction from commit `2f71048` was installed with45 verified sectors and
+one exact full1MiB readback. The previous MDX image and original NES rollback
+remain saved privately. A single reset and successful MDX serial observation
+confirmed frames521600 to962816, zero underruns and zero reported errors.
+MDX STOP followed by the existing guarded UBOOT arm/confirm handshake also
+verified complete peripheral teardown on the first MDX image before this write.
+Physical panel/knob confirmation of the correction is pending.
 
 Persistent uploaded songs, drag-and-drop mass storage and MIDI input remain
 unimplemented. PCM playback uses bounded48kHz-to44.1kHz sample resampling;
