@@ -79,6 +79,20 @@ int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx
 #ifdef FM1_USB_AUDIO
     if(!strcmp(s,"MDX AUDIO")){char out[224];fm1_usb_audio_status(out,sizeof(out));reply(ctx,out);return 1;}
 #endif
+    if(!strcmp(s,"MDX VOLUME")) {
+        char out[200];fm1_volume v;unsigned gain;
+        f=take(&input_lock);v=mdx_volume;release(&input_lock,f);
+        f=take(&audio_lock);gain=envelope.gain_q7;release(&audio_lock,f);
+        snprintf(out,sizeof(out),"MDX VOLUME running=%u valid=%u raw=%u target=%u gain=%u samples=%lu errors=%lu\n",
+            v.running,v.valid,v.raw,v.target,gain,(unsigned long)v.samples,(unsigned long)v.errors);reply(ctx,out);return 1;
+    }
+    if(!strcmp(s,"MDX SCAN")) {
+        char out[224];fm1_wl82_keyscan_failure d;unsigned enabled,completions;
+        f=take(&input_lock);d=scanner.failure;enabled=scan_enabled;completions=scanner.completions;release(&input_lock,f);
+        snprintf(out,sizeof(out),"MDX SCAN enabled=%u completions=%u reason=%lu row=%lu elapsed_us=%lu con=%08lx cnt=%lu\n",
+            enabled,completions,(unsigned long)d.reason,(unsigned long)d.row,(unsigned long)(d.end_us-d.start_us),
+            (unsigned long)d.con,(unsigned long)d.dma_count);reply(ctx,out);return 1;
+    }
     if(!strcmp(s,"MDX INPUT")) {
         char out[224];size_t n;
         f=take(&control_lock);
@@ -147,7 +161,9 @@ ___interrupt
 static void fm1_mdx_keyscan_isr(void){unsigned f=take(&input_lock);if(scan_enabled)fm1_wl82_keyscan_async_step(&scanner);release(&input_lock,f);}
 static void fm1_mdx_scan_tick(void *u) {
     unsigned f=take(&input_lock);(void)u;
-    if(scan_enabled){if(!(++scan_ticks&1))fm1_volume_tick(&mdx_volume);fm1_wl82_keyscan_async_kick(&scanner);}
+    /* ADC volume and matrix scanning share a timer, not a failure lifetime. */
+    if(!(++scan_ticks&1))fm1_volume_tick(&mdx_volume);
+    if(scan_enabled)fm1_wl82_keyscan_async_kick(&scanner);
     release(&input_lock,f);
 }
 static void publish(void) {
@@ -254,11 +270,12 @@ static void fm1_peripheral_task(void *u) {
     (void)u;memset(&pd,0,sizeof(pd));
     lcd_error=fm1_display_test_init();
     bit_clr_ie(IRQ_SPI2_IDX,0);key_error=fm1_wl82_keyscan_async_start(&scanner,0,now_us);
+    fm1_volume_start(&mdx_volume);
     if(!key_error) {
         scan_enabled=1;request_irq(IRQ_SPI2_IDX,5,fm1_mdx_keyscan_isr,0);
-        fm1_volume_start(&mdx_volume);scan_timer=sys_usec_timer_add(0,fm1_mdx_scan_tick,1000,1,0);
-        if(scan_timer<=0){key_error=-1;scan_enabled=0;fm1_volume_stop(&mdx_volume);}
     }
+    scan_timer=sys_usec_timer_add(0,fm1_mdx_scan_tick,1000,1,0);
+    if(scan_timer<=0){key_error=-1;scan_enabled=0;fm1_volume_stop(&mdx_volume);}
     fm1_audio_startup_reset(&envelope);
     pd.port_sel=IIS_PORTC;pd.channel_out=pd.data_width=8;pd.mclk_output=1;pd.sr_points=128;
     audio_error=iis_open(&pd,0);
@@ -298,7 +315,7 @@ static void fm1_peripheral_task(void *u) {
                 f=take(&control_lock);if(!upload.active && !control.request)request(0,FM1_MDX_SELECT,(player.selected+8+step)%8,0);release(&control_lock,f);
             }
         } else if(scan_rc!=FM1_NES_BUSY && scan_enabled) {
-            key_error=scan_rc;f=take(&input_lock);scan_enabled=0;fm1_wl82_keyscan_stop(&scanner);fm1_volume_stop(&mdx_volume);release(&input_lock,f);
+            key_error=scan_rc;f=take(&input_lock);scan_enabled=0;fm1_wl82_keyscan_stop(&scanner);release(&input_lock,f);
             /* Lost key releases must never leave a manual voice held. */
             for(a=0;a<8;a++)if(player.live_note[a]>=0){fm1_mdx_song_write(&player,8,(uint8_t)a);ym2151_write_reg(&player.opm,8,(int)a);player.live_note[a]=-1;}
         }

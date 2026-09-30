@@ -53,16 +53,17 @@ void fm1_screen_title(fm1_screen_view *v,const uint8_t *data,size_t n) {
     if(!v->title[0])strcpy(v->title,"MDX PLAYER");
 }
 void fm1_screen_indices(const fm1_screen_view *v,unsigned y,uint8_t r[240]) {
+    static const char names[16][3]={"F1","F2","F3","F4","F5","F6","F7","F8","P1","P2","P3","P4","P5","P6","P7","P8"};
     char s[40];unsigned i,seg;
     memset(r,0,240);if(y>=240)return;
     rect(r,y,0,0,240,21,1);rect(r,y,0,20,240,1,2);
     text(r,y,8,5,"FM1",2,8);text(r,y,49,9,"MDX",1,6);
-    snprintf(s,sizeof(s),"%02lu:%02lu",(unsigned long)(v->seconds/60),(unsigned long)(v->seconds%60));text(r,y,125,8,s,1,5);
+    if(y>=8 && y<15){snprintf(s,sizeof(s),"%02lu:%02lu",(unsigned long)(v->seconds/60),(unsigned long)(v->seconds%60));text(r,y,125,8,s,1,5);}
     text(r,y,188,8,v->running?"PLAY >":"STOP",1,v->running?14:6);
     /* Song labels stay inside the card at native LCD resolution. */
     rect(r,y,4,25,232,32,1);text(r,y,8,28,v->title,1,8);text(r,y,8,43,v->subtitle[0]?v->subtitle:(v->uploaded?"USB SONG / RAM":"FLASH DEMO"),1,6);
     text(r,y,8,64,"STEREO FFT",1,6);text(r,y,164,64,"44.1 KHZ",1,6);
-    for(i=0;i<24;i++) {
+    if(y>=76 && y<111)for(i=0;i<24;i++) {
         int height=(v->spectrum[i]*35+254)/255;
         rect(r,y,8+(int)i*9,76,7,35,3);
         for(seg=0;seg<12;seg++)if((int)seg*3<height)rect(r,y,8+(int)i*9,109-(int)seg*3,7,2,seg<4?10:seg<8?11:14);
@@ -72,16 +73,16 @@ void fm1_screen_indices(const fm1_screen_view *v,unsigned y,uint8_t r[240]) {
     text(r,y,8,140,"FM / MDX",1,6);text(r,y,164,140,"8 PARTS",1,6);
     text(r,y,8,181,"PCM8",1,6);text(r,y,164,181,"8 VOICES",1,6);
     /* All16 voice peaks: FM before shared nonlinear sum; PCM after gain/pan. */
-    for(i=0;i<16;i++) {
+    if((y>=149 && y<178)||(y>=190 && y<219))for(i=y<180?0:8;i<(y<180?8u:16u);i++) {
         int top=i<8?151:192,x=8+(int)(i%8)*28;
         unsigned muted=(v->mutes>>i)&1,selected=i==v->selected;
         rect(r,y,x-2,top-2,26,29,selected?2:1);
         for(seg=0;seg<6;seg++){unsigned color=3;if(v->parts[i]>seg*255/6)color=muted?15:seg<2?10:seg<4?11:14;
             rect(r,y,x+1,top+15-(int)seg*3,21,2,color);}
         if(v->hold[i])rect(r,y,x+1,top+15-(int)((v->hold[i]-1)*6/255)*3,21,1,muted?15:8);
-        snprintf(s,sizeof(s),i<8?"F%u":"P%u",i%8+1);text(r,y,x+6,top+20,s,1,muted?15:selected?8:6);
+        text(r,y,x+6,top+20,names[i],1,muted?15:selected?8:6);
     }
-    snprintf(s,sizeof(s),"FM%u %s  OCT%+d",v->selected+1,(v->mutes&(1u<<v->selected))?"KARAOKE":"MDX",v->octave);text(r,y,8,222,s,1,5);
+    if(y>=222 && y<229){snprintf(s,sizeof(s),"FM%u %s  OCT%+d",v->selected+1,(v->mutes&(1u<<v->selected))?"KARAOKE":"MDX",v->octave);text(r,y,8,222,s,1,5);}
     rect(r,y,0,233,240,7,1);text(r,y,3,233,"SELECT PART  FX MUTE  PLAY/STOP",1,6);
 }
 void fm1_screen_row(const fm1_screen_view *v,unsigned y,uint8_t out[480]) {

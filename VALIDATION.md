@@ -399,3 +399,24 @@ The composite PI32 link and5 linked corruption regressions pass with the
 reviewed startup/power relocations. Source-only display work remains separate
 from the installed image; no UI firmware flash or hardware FPS acceptance has
 occurred. See[DISPLAY.md](DISPLAY.md) for definitions and bench requirements.
+
+
+### UI flash bench failure and correction
+
+User-approved UI image00032c4e9fc259e400808023161ebb9b8f7e0eeb8304ec7864ee128b47ce649f
+was flashed in47 directory-last sectors. Its complete1MiB readback matches.
+The reset was sent once; the CLI logger hit its known UTF-8 decoding error.
+CDC boot/audio progress is observed, but the protected observation fails on
+`keys=-3`; the original session failure latch is retained. The user performed
+a cold power cycle and the same scanner error/internal-audio mute persists.
+Bench display telemetry is6.7-6.8FPS, maximum frame270ms; audio reports zero
+underruns, no rebuffers and a10ms maximum coarse-clock callback gap.
+
+The follow-up separates ADC volume sampling from scanner failure, adjusts the
+watchdog for the actual10ms clock quantum and reduces per-row formatting/work.
+All9 CTests,7 client checks,4 screenshot checks and the descriptor test pass,
+including the real scanner driver at the quantized-clock boundary and an injected
+scanner fault that must leave ADC volume sampling operational. The optimized
+Super Laydock preview is byte-identical in indexed pixels. The correction links
+with the pinned SDK and passes5 linked corruption regressions. It is not flashed
+or hardware accepted yet; its exact candidate and rollback need approval.

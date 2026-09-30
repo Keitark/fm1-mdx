@@ -82,7 +82,7 @@ def wait_stopped(port):
 def control_reply(port,command):
     action=command.split()[1]
     prefix={'STATUS':'MDX running=','AUDIO':'MDX AUDIO ',
-            'TIMING':'MDX TIMING ','DISPLAY':'MDX DISPLAY ','INPUT':'MDX INPUT '}.get(action,'OK MDX QUEUED')
+            'TIMING':'MDX TIMING ','DISPLAY':'MDX DISPLAY ','VOLUME':'MDX VOLUME ','SCAN':'MDX SCAN ','INPUT':'MDX INPUT '}.get(action,'OK MDX QUEUED')
     return exchange(port,command,expected_prefix=prefix)
 
 def send(port,data):
@@ -104,7 +104,7 @@ def send(port,data):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action',choices=('list','upload','screenshot','status','input','audio','timing','display','play','stop','demo','select','mute','note'))
+    p.add_argument('action',choices=('list','upload','screenshot','status','input','audio','timing','display','volume','scan','play','stop','demo','select','mute','note'))
     p.add_argument('--port');p.add_argument('--mdx',type=Path);p.add_argument('--pdx',type=Path)
     p.add_argument('--output',type=Path,help='PNG path for screenshot (default: timestamped current-directory file)')
     p.add_argument('--track',type=int,help='1..8 for select;1..16 for mute')

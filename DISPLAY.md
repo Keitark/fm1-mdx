@@ -59,3 +59,29 @@ Commercial inputs and generated recordings stay outside this repository.
 This UI candidate requires an exact-image approved flash, actual FPS/audio tests,
 karaoke/control acceptance, and a live screenshot check. It does not resolve or
 qualify the separately investigated USB audio byte-alignment noise.
+
+
+## First bench result and correction
+
+Image00032c4e9fc259e400808023161ebb9b8f7e0eeb8304ec7864ee128b47ce649f
+was explicitly approved, written and fully readback-verified. It boots, but
+measured refresh is6.7-6.8FPS and `keys=-3` persists after a cold power cycle.
+The existing scanner-failure path stops the ADC and clears its volume target,
+muting internal audio while USB capture remains audible before that envelope.
+This image is not accepted for panel/internal-audio use.
+
+The correction supplies the scanner with the SDK clock's10000us quantum; its
+no-progress limit becomes10000us plus one quantum. With a quantized clock,
+observations1us apart can otherwise appear10000us apart and falsely trip the
+watchdog. The actual driver regression reproduces that boundary, and still
+rejects a real no-progress interval. Default high-resolution users retain the
+original limit. Volume ADC sampling now has its own lifetime on the shared
+1ms timer; scanner failure still releases manual notes and disables matrix
+scanning, but leaves the independent, bounded ADC volume service running.
+ADC failure and final teardown still fail muted.
+
+Row rendering skips irrelevant spectrum/part regions and removes repeated
+formatting of16 static labels on every row. A measured song preview remains
+pixel-identical. New `MDX VOLUME` and `MDX SCAN` commands expose volume target,
+ADC progress and scanner failure snapshots. Correction host tests pass; a new
+exact-image approval is required before its hardware FPS/control/audio test.
