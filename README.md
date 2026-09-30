@@ -4,7 +4,10 @@ An experimental MDX/PDX player for the M-VAVE FM-1. It uses the display, DAC,
 keyboard, encoders and USB CDC support developed for FM1-NES, with a bounded
 RetroFM MDX sequencer and software YM2151 synthesis.
 
-**Status: host-tested candidate. Not yet installed or accepted on the FM-1.**
+**Status: flashed on the FM-1; screen and demo audio confirmed on2026-09-30.**
+Full flash readback matched. Live CDC upload/playback and karaoke control smoke
+checks passed with zero audio underruns. Detailed physical karaoke and stereo
+qualification remain pending; see [VALIDATION.md](VALIDATION.md).
 This repository contains source and original demo assets. It contains no stock
 firmware, device backups, chip keys, commercial songs, vendor SDK libraries or
 unit-specific flash images.
@@ -26,10 +29,18 @@ unit-specific flash images.
 
 ## Controls
 
-Scanner slots0/1 select the previous/next FM track, slot2 toggles karaoke mute,
-and slot3 toggles play/stop. Encoder0 also selects a track. Slots14–40 are the
-keyboard, MIDI53–79. These are stock-derived scanner assignments; physical
-button names, encoder direction and behavior require this candidate's bench test.
+OCT−/OCT+ shift new keyboard notes by an octave, bounded to−3..+2. A held note
+keeps its original pitch until released. FX toggles karaoke mute; PLAY/STOP
+toggles playback. The SELECT knob beside master volume selects an FM track
+(encoder0, pending physical confirmation). The SEL button is unassigned.
+Slots14–40 are the keyboard, MIDI53–79 before octave shifting. The panel order
+is slots0/1 for OCT−/OCT+,2..7 for FX/SEL/ENV/LFO/EDIT/GLO, and8..13 for
+HOME/SAVE/ARP/SEQ/PLAY-STOP/REC. FX/SEL are user-observed; the remaining names
+follow the supplied panel order and require the corrected candidate's bench test.
+`MDX STATUS` exposes `oct`, held `panel` bits and the `last` pressed panel slot
+for verification. Encoder direction also remains to be confirmed.
+`python firmware/mdx/usb_client.py input --port COM10` also reads all seven
+encoder counters so an unexpected physical mapping can be identified.
 The volume knob uses the recovered PB6 ADC input, starting muted and ramping.
 
 ## Build and test

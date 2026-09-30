@@ -198,7 +198,9 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
             if usb_nes:encodings.update({340:'d1 ec 07 15'})
             # MDX standalone profile: reviewed store at ota_status+300,
             # d1 ec 0f 12 is [++r0=300]=r1; same startup wrapper contract.
-            if usb_mdx:encodings.update({300:'d1 ec 0f 12',312:'d1 ec 0b 13',316:'d1 ec 0f 13'})
+            # Panel/octave link: ota_status0x1c4b910 +336 = trace0x1c4ba60;
+            # reviewed store0x200276c: d1 ec 03 15 = [++r0=336]=r1.
+            if usb_mdx:encodings.update({300:'d1 ec 0f 12',312:'d1 ec 0b 13',316:'d1 ec 0f 13',336:'d1 ec 03 15'})
             require(delta in encodings,'USB trace merged-global offset changed: '+str(delta))
             struct.pack_into('<I',expected_wrapper,4,value('ota_status'))
             expected_wrapper[14:16]=bytes.fromhex(encodings[delta])

@@ -10,6 +10,18 @@ from usb_diag_client import exchange,IDENTITY
 LIMIT=192*1024
 HELLO='FM1DIAG/1 MDX-KARAOKE/1 RAM-UPLOAD UBOOT=SERIAL COMMIT=BLOCKED'
 
+def confirm_identity(port):
+    # HELLO is read-only; retry only this handshake while CDC RX settles.
+    for attempt in range(3):
+        try:
+            answer=exchange(port,'HELLO',expected_prefix='FM1DIAG/1 ')
+        except TimeoutError:
+            if attempt==2:raise
+            time.sleep(.25)
+            continue
+        if answer!=HELLO:raise RuntimeError('MDX firmware identity mismatch')
+        return
+
 def bundle(mdx,pdx=b''):
     if not mdx or len(mdx)+len(pdx)+12>LIMIT:
         raise ValueError('MDX + PDX +12-byte header must fit192KiB')
@@ -24,7 +36,7 @@ def wait_stopped(port):
     raise TimeoutError('Player did not stop; no song bytes sent')
 
 def send(port,data):
-    if exchange(port,'HELLO')!=HELLO:raise RuntimeError('Wrong firmware; no song uploaded')
+    confirm_identity(port)
     exchange(port,'MDX STOP');wait_stopped(port)
     if exchange(port,f'MDX BEGIN {len(data):08x} {zlib.crc32(data):08x}')!='OK MDX BEGIN RAM':
         raise RuntimeError('Unexpected upload acknowledgement')
@@ -42,7 +54,7 @@ def send(port,data):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action',choices=('list','upload','status','play','stop','demo','select','mute','note'))
+    p.add_argument('action',choices=('list','upload','status','input','play','stop','demo','select','mute','note'))
     p.add_argument('--port');p.add_argument('--mdx',type=Path);p.add_argument('--pdx',type=Path)
     p.add_argument('--track',type=int,help='1..8 for select;1..16 for mute')
     p.add_argument('--note',type=int,help='MIDI13..108');p.add_argument('--on',type=int,choices=(0,1),default=1)
@@ -65,7 +77,10 @@ def main():
         p.error('Specify the FM1 CDC port with --port; no port opened')
     with serial.Serial(a.port,115200,timeout=.1,write_timeout=2,rtscts=False,dsrdtr=False) as port:
         port.dtr=True;port.rts=False
-        if exchange(port,'HELLO')!=HELLO:raise RuntimeError('MDX firmware identity mismatch')
+        # Allow the CDC session/RX rearm to settle after DTR before HELLO.
+        # Hardware can otherwise discard the first command after port opening.
+        time.sleep(1)
+        confirm_identity(port)
         if data is not None:print(send(port,data));return
         command='MDX '+a.action.upper()
         if a.action=='select':command+=f' {a.track-1}'

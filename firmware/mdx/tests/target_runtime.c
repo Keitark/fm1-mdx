@@ -54,12 +54,40 @@ void os_time_dly(int n){
         if(ms==40)command("MDX STOP");
         if(ms==45){CHECK(!control.running && !control.request);command("MDX BEGIN 00000010 00000000");CHECK(upload.active);}
         if(ms==46){command("MDX ABORT");CHECK(!upload.active);command("MDX DEMO");}
+        if(ms==55)encoders.count[0]++;
+        if(ms==65){CHECK(player.selected==1);command("MDX INPUT");CHECK(strstr(answer,"enc=1,0,0,0,0,0,0"));}
         if(ms==80){CHECK(control.running && !player.error);CHECK(mdx_volume.valid);fm1_peripheral_session_cancel();CHECK(control.running);}
         if(ms==100)fm1_peripheral_cancel();
         CHECK(ms<200);
     }
 }
-int main(void){CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
+static void panel_tests(void) {
+    unsigned i;
+    CHECK(!fm1_mdx_load(&player,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size));
+    control.available=control.running=1;
+    panel_edges(UINT64_C(1)<<3,0,UINT64_C(1)<<3);CHECK(!control.request); /* SEL */
+    panel_edges(UINT64_C(1)<<12,0,UINT64_C(1)<<12);CHECK(control.request==FM1_MDX_STOP);control.request=0;
+    control.running=0;panel_edges(UINT64_C(1)<<12,0,0);CHECK(control.request==FM1_MDX_DEMO);control.request=0;control.running=1;
+    panel_edges(4,0,4);CHECK(control.request==FM1_MDX_MUTE);control.request=0;
+    CHECK(!fm1_mdx_mute(&player,0,1));
+    panel_edges(UINT64_C(1)<<14,0,UINT64_C(1)<<14);CHECK(player.live_note[0]==53);
+    panel_edges(2,0,(UINT64_C(1)<<14)|2);CHECK(keyboard_octave==1 && player.live_note[0]==53 && !control.request);
+    panel_edges(0,UINT64_C(1)<<14,0);CHECK(player.live_note[0]==-1); /* old pitch released */
+    panel_edges(UINT64_C(1)<<14,0,UINT64_C(1)<<14);CHECK(player.live_note[0]==65);
+    panel_edges(UINT64_C(1)<<15,0,(UINT64_C(1)<<14)|(UINT64_C(1)<<15));CHECK(player.live_note[0]==66);
+    panel_edges(0,UINT64_C(1)<<14,UINT64_C(1)<<15);CHECK(player.live_note[0]==66);
+    panel_edges(0,UINT64_C(1)<<15,0);CHECK(player.live_note[0]==-1);
+    for(i=0;i<10;i++)panel_edges(1,0,1);
+    CHECK(keyboard_octave==-3 && player.selected==0 && !control.request);
+    panel_edges(UINT64_C(1)<<14,0,0);CHECK(player.live_note[0]==17);
+    for(i=0;i<10;i++)panel_edges(2,0,2);
+    CHECK(keyboard_octave==2);
+    panel_edges(UINT64_C(1)<<40,0,0);CHECK(player.live_note[0]==103);
+    panel_edges(3,0,3);CHECK(keyboard_octave==2); /* opposite buttons cancel */
+    silence();CHECK(keyboard_slot==41 && player.live_note[0]==-1);
+    keyboard_octave=0;memset(&control,0,sizeof(control));
+}
+int main(void){panel_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
     CHECK(opened==1 && closed==1 && key_stopped==1 && lcd_stopped==1 && timer_deleted==1);
     CHECK(!audio_enabled && !scan_enabled && !alink && !keyirq && control.quiescent && !control.running);
     CHECK(fm1_peripheral_idle());puts("PASS MDX task, stereo DMA, controls, stop/upload exclusion, disconnect continuity, complete UBOOT teardown");return 0;
