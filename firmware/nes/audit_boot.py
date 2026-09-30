@@ -325,7 +325,7 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
         for name in ('cdc_read_data','cdc_write_data','fm1_cdc_ready','fm1_usb_dma','fm1_diag_feed'):
             require(name in symbols,'Missing USB diagnostic '+name)
         descriptor=bytes((18,1,0,2,2,2,1,64,0x54,0x36,0x55,0x51,0,2,1,2,0,1))
-        if usb_audio:descriptor=bytes((18,1,0,2,0xef,2,1,64,0x54,0x36,0x55,0x51,1,2,1,2,0,1))
+        if usb_audio:descriptor=bytes((18,1,0,2,0xef,2,1,64,0x54,0x36,0x55,0x51,3,2,1,2,0,1))
         if usb_audio:
             for name in ('fm1_uac_desc_config','fm1_usb_audio_dac','fm1_usb_audio_stop','fm1_uac_descriptor','fm1_uac_dma'):
                 require(name in symbols,'Missing composite audio component '+name)
@@ -333,7 +333,7 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
             require(audio_size==512 and audio_dma%64==0 and bss[3]<=audio_dma and audio_dma+audio_size<=bss[3]+bss[5],
                     'Audio DMA size/alignment/internal-RAM placement changed')
             require(symbols['fm1_uac_descriptor'][1]==173 and hashlib.sha256(code_at(value('fm1_uac_descriptor'),173)).hexdigest()==
-                    '158d06cd620fe9bb8ab368b4694729a869ef9e986387837c2ce01636b62b3c10',
+                    '820961a648e4bf17faa19a3bdd788f7a70205ff0600b5fbb35c069deb7219d8d',
                     'UAC1 interface/terminal/format/endpoint descriptor changed')
         require(code_at(value('fm1_usb_device_descriptor'),18)==descriptor,
                 'USB CDC device descriptor changed')

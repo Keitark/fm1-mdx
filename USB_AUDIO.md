@@ -29,7 +29,8 @@ CPU margins still require measurements on the device.
 The device advertises an IAD composite identity (`EF/02/01`) and fixed48kHz
 stereo16-bit PCM. Windows includes a native [USB Audio Class1 driver](https://learn.microsoft.com/en-us/windows-hardware/drivers/audio/usb-audio-class-system-driver--usbaudio-sys-)
 and supports [IAD function grouping](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/usb-interface-association-descriptor).
-This describes class compatibility; enumeration of this firmware is untested.
+The first hardware installation enumerated CDC and playback; recording needed
+the compatibility correction described below.
 There are no advertised device-volume or sample-rate controls to implement.
 
 The DAC and MDX synth remain44.1kHz. Two bounded1024-frame stereo queues and
@@ -38,6 +39,14 @@ queue-fill correction handles clock drift. Startup priming adds several
 milliseconds of buffering; actual end-to-end latency and conversion quality
 are not measured. This initial profile does not claim professional converter
 performance. There is still one synth task and one analog audio owner.
+
+The MDX recording source uses virtual Line Connector terminal type0x0603 for
+Windows recording compatibility. Both the original undefined input and the
+embedded Synthesizer type0x0713 failed to produce a recording endpoint on this
+Windows machine. With0x0713, a direct KS query confirmed the stereo48kHz capture
+pin and synthesizer bridge existed, but PnP and WinMM still exposed only playback.
+The line classification describes the virtual recording path; it adds no analog
+ADC or input jack. See[Microsoft's pin mapping](https://learn.microsoft.com/en-us/windows-hardware/drivers/audio/pin-category-property).
 
 Read streaming counters after installation using the actual CDC port:
 
@@ -67,4 +76,5 @@ Before hardware acceptance, install one reviewed candidate with the known
 working CDC firmware rollback ready. Confirm separate CDC and USB audio
 functions, left/right playback, MDX recording with PC return excluded, PC audio
 while MDX is stopped, concurrent CDC uploads/control, sustained duplex counters,
-disconnect/reconnect and UBOOT recovery. The profile has not been flashed yet.
+disconnect/reconnect and UBOOT recovery. See[VALIDATION.md](VALIDATION.md) for
+the installed revisions and remaining hardware checks.

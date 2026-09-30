@@ -164,3 +164,25 @@ The normalized SDK power hash remains unchanged; linked-ELF descriptor and power
 corruption tests still reject changes. These candidates have not been flashed.
 Live screen matching and audio continuity during capture remain bench gates.
 See[SCREENSHOT.md](SCREENSHOT.md) for commands and capture semantics.
+
+## Composite installation and recording-terminal correction
+
+The user authorized the combined USB audio/screenshot flash on2026-09-30.
+The separate reviewed writer installed commit`0c00ef3`, with46 verified sectors
+and an exact1MiB readback, SHA256
+`5805f8f78b3d3994b5f67951072ae3f30650d49e9fca0727912bfb4f6e270788`.
+The previous control firmware rollback remains saved privately. One reset and
+successful serial observation confirmed MDX playback onCOM4, frames1,472,320
+to1,913,536, with zero underruns or player/peripheral errors.
+
+Windows enumerated healthy CDC, composite and USB audio devices, plus a playback
+endpoint. A real240x240 screenshot transferred and decoded; subsequent MDX
+status still showed zero underruns. No recording endpoint appeared in PnP or
+WinMM. The capture terminal was Input Undefined(0x0200).
+
+Issue#7 changes that source to the defined embedded Synthesizer terminal0x0713
+and advances composite bcdDevice to2.02. The source still records the MDX synth;
+no analog input is added. Host and linked corruption checks pass. The corrected
+184,784-byte application's SHA256 is
+`117dc6e2d2f62806ea57ff645d635fd4c9d844baedd62c7e4e124bc5caad80d3`.
+Its hardware recording verification is pending.

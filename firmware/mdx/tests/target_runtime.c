@@ -48,7 +48,7 @@ void os_time_dly(int n){
     CHECK(n==1);
     for(i=0;i<(unsigned)n;i++) {
         ms++;if(tick)tick(0);if(keyirq)keyirq();if(alink)alink();
-        if(ms==20)command("MDX MUTE 00 1");
+        if(ms==20){CHECK(player.mute_mask==0x100);command("MDX MUTE 00 1");}
         if(ms==22)command("MDX NOTE 3c 1");
         if(ms==35){CHECK(player.live_note[0]==60);CHECK(player.mute_mask&1);}
         if(ms==40)command("MDX STOP");
@@ -85,7 +85,12 @@ static void panel_tests(void) {
     panel_edges(UINT64_C(1)<<40,0,0);CHECK(player.live_note[0]==103);
     panel_edges(3,0,3);CHECK(keyboard_octave==2); /* opposite buttons cancel */
     silence();CHECK(keyboard_slot==41 && player.live_note[0]==-1);
-    keyboard_octave=0;memset(&control,0,sizeof(control));
+    action(FM1_MDX_DEMO,0,0);CHECK(player.mute_mask==0x100 && !uploaded_song);
+    memcpy(upload.bytes+12,fm1_demo_mdx,fm1_demo_mdx_size);
+    memcpy(upload.bytes+12+fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size);
+    upload.mdx_size=(uint32_t)fm1_demo_mdx_size;upload.pdx_size=(uint32_t)fm1_demo_pdx_size;
+    action(FM1_MDX_PLAY,0,0);CHECK(!player.mute_mask && uploaded_song);
+    silence();keyboard_octave=0;memset(&control,0,sizeof(control));
 }
 int main(void){panel_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
     CHECK(opened==1 && closed==1 && key_stopped==1 && lcd_stopped==1 && timer_deleted==1);

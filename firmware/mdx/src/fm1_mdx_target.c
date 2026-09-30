@@ -181,7 +181,12 @@ static void action(unsigned op,unsigned a,unsigned b) {
         if(op==FM1_MDX_PLAY) {
             uploaded_song=1;
             rc=fm1_mdx_load(&player,upload.bytes+12,upload.mdx_size,upload.bytes+12+upload.mdx_size,upload.pdx_size);
-        } else {uploaded_song=0;rc=fm1_mdx_load(&player,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size);}
+        } else {
+            uploaded_song=0;rc=fm1_mdx_load(&player,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size);
+            /* The generated PCM drum sounds like a metronome. Keep it muted
+               in the built-in demo; external MDX/PDX songs retain their mix. */
+            if(!rc)rc=fm1_mdx_mute(&player,8,1);
+        }
     } else if(op==FM1_MDX_SELECT)rc=fm1_mdx_select(&player,a);
     else if(op==FM1_MDX_MUTE)rc=fm1_mdx_mute(&player,a,(int)b);
     else if(op==FM1_MDX_NOTE)rc=fm1_mdx_note(&player,a,(int)b);
