@@ -1,0 +1,16 @@
+build/
+.deps/
+local/
+__pycache__/
+*.pyc
+*.wav
+*.elf
+*.o
+*.obj
+*.bin
+*.map
+*.ufw
+*.fwsc
+private-backups/
+references/
+tmp/
