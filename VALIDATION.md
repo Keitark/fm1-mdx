@@ -380,3 +380,22 @@ The current UAC target ignores `usb_g_iso_write` results; `tx_packets` counts
 encoder attempts before submission, and `bad_packets` concerns USB OUT input.
 Consequently, the existing status does not certify successful or correctly
 aligned USB IN transfers. Device listening acceptance remains open.
+
+
+## 2026-09-30 Pocket-style UI candidate (issue12)
+
+The UI adds real256-point stereo FFT analysis, FM8/PCM8 sample-peak meters,
+20Hz requested dirty-row refresh, and completed-frame FPS telemetry. All8 CTests,
+7 client checks,4 screenshot checks and the descriptor test pass. The integrated
+replay checks each committed screen against its modeled LCD pixel RAM.
+
+Private Super Laydock at+500ppm over180 simulated seconds completes3598 views
+(19.99FPS),83094 row writes and780426 skips, with no missing synth samples,
+rebuffers or modeled USB FIFO errors. The wire-cost model assumes400us per row;
+PI32 CPU/render costs and real USB/DMA timing remain outside the model. The
+10-second demo WAV is byte-identical before/after the sample meter taps.
+
+The composite PI32 link and5 linked corruption regressions pass with the
+reviewed startup/power relocations. Source-only display work remains separate
+from the installed image; no UI firmware flash or hardware FPS acceptance has
+occurred. See[DISPLAY.md](DISPLAY.md) for definitions and bench requirements.

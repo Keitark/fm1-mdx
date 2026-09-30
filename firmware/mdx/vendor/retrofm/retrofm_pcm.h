@@ -41,6 +41,7 @@ typedef struct retrofm_pcm_voice {
 
 typedef struct retrofm_pcm_mixer {
     retrofm_pcm_voice voices[RETROFM_PCM_CHANNELS];
+    uint16_t peaks[RETROFM_PCM_CHANNELS]; /* post-gain/pan, task-owned meter tap */
 } retrofm_pcm_mixer;
 
 void retrofm_pcm_init(retrofm_pcm_mixer *mixer);

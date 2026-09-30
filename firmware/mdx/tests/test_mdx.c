@@ -39,6 +39,8 @@ int main(void) {
     CHECK(fm1_mdx_mix_sample(0,-32768,-32768,0)==-32768);
     CHECK(!fm1_mdx_load(&p,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size));
     CHECK(p.mdx.track_count==9);CHECK(audio(400)>100000);
+    CHECK(p.meters.parts[0]>0 && p.meters.parts[8]>0);
+    CHECK(p.meters.stereo[0]>0 && p.meters.count==FM1_FFT_SIZE);
     CHECK(fm1_mdx_mute(&p,16,1)==-1);
     CHECK(!fm1_mdx_mute(&p,0,1));
     fm1_mdx_song_write(&p,8,0x78);CHECK(p.registers[8]==0);
@@ -58,8 +60,9 @@ int main(void) {
     CHECK(fm1_mdx_note(&p,60,1)==-1);CHECK(!fm1_mdx_mute(&p,1,1));CHECK(!fm1_mdx_note(&p,60,1));
     CHECK(!fm1_mdx_mute(&p,1,0));CHECK(p.live_note[1]==-1);
     for(i=0;i<9;i++)CHECK(!fm1_mdx_mute(&p,i,1));
-    audio(400);CHECK(audio(100)==0); /* All playback triggers gated, tails drained. */
-    CHECK(!fm1_mdx_select(&p,0));CHECK(!fm1_mdx_note(&p,65,1));CHECK(audio(20)>0);
+    audio(400);memset(&p.meters,0,sizeof(p.meters));CHECK(audio(100)==0);
+    for(i=0;i<16;i++)CHECK(!p.meters.parts[i]); /* All playback triggers gated, tails drained. */
+    CHECK(!fm1_mdx_select(&p,0));CHECK(!fm1_mdx_note(&p,65,1));CHECK(audio(20)>0);CHECK(p.meters.parts[0]>0);
     CHECK(p.registers[0x40]==p.song_registers[0x40]);
     fm1_mdx_stop(&p);CHECK(!p.playing);for(i=0;i<8;i++)CHECK(p.live_note[i]==-1);
     CHECK(fm1_mdx_load(&p,fm1_demo_mdx,fm1_demo_mdx_size,0,0)==RETROFM_MDX_MISSING_PDX);

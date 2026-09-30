@@ -137,6 +137,15 @@ int fm1_mdx_render(fm1_mdx_player *p,int16_t *stereo,size_t frames) {
         /* MAME's YM2151 bit7 is left; MDX bit6 is left. Swap FM only. */
         stereo[2*i]=fm1_mdx_mix_sample(p->right[0],p->pcm_previous_left,p->pcm_left,p->pcm_phase);
         stereo[2*i+1]=fm1_mdx_mix_sample(p->left[0],p->pcm_previous_right,p->pcm_right,p->pcm_phase);
+        {unsigned ch;for(ch=0;ch<8;ch++) {
+            /* FM carrier sum before shared cubic mixer; shift matches FINAL_SH.
+               Pan-disabled voices are silent at the output. */
+            if(p->opm.pan[ch*2] || p->opm.pan[ch*2+1])
+                fm1_meters_peak(&p->meters.parts[ch],p->opm.chanout[ch]/2);
+            if(p->pcm.peaks[ch]>p->meters.parts[ch+8])p->meters.parts[ch+8]=p->pcm.peaks[ch];
+            p->pcm.peaks[ch]=0;
+        }}
+        fm1_meters_feed(&p->meters,stereo[2*i],stereo[2*i+1]);
         p->remainder+=RETROFM_PL_CLOCK_HZ;
         p->cycles+=p->remainder/FM1_MDX_RATE;p->remainder%=FM1_MDX_RATE;
     }

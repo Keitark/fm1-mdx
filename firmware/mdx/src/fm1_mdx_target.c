@@ -43,7 +43,9 @@ static uint32_t callback_ms,callback_gap_ms,late_callbacks,rebuffer_events,rebuf
 static unsigned callback_seen,queue_min=2048;
 static unsigned primed,audio_enabled,audio_playing,scan_enabled,scan_ticks;
 static uint8_t row_pixels[480];
-static fm1_screen_text screen_shown;
+static fm1_screen_view screen_shown;
+static uint32_t ui_rows,ui_skipped,ui_max_ms,ui_fps10,ui_epoch,ui_epoch_frames;
+static uint8_t previous_pixels[480];
 static uint32_t screen_frame;
 static fm1_screen screen_transfer;
 static volatile uint32_t mdx_lcd_registers[20],mdx_lcd_phase;
@@ -51,10 +53,10 @@ static volatile int lcd_error,key_error,audio_error;
 static int scan_timer,uploaded_song;
 static unsigned take(spinlock_t *l){unsigned f;local_irq_save(f);arch_spin_lock(l);return f;}
 static void release(spinlock_t *l,unsigned f){arch_spin_unlock(l);local_irq_restore(f);}
-static int screen_snapshot(void *u,fm1_screen_text text,uint32_t *frame) {
+static int screen_snapshot(void *u,fm1_screen_view *view,uint32_t *frame) {
     unsigned f=take(&control_lock);int rc;(void)u;
     rc=!control.available || control.shutdown || lcd_error || !screen_frame;
-    if(!rc){memcpy(text,screen_shown,sizeof(screen_shown));*frame=screen_frame;}
+    if(!rc){memcpy(view,&screen_shown,sizeof(screen_shown));*frame=screen_frame;}
     release(&control_lock,f);return rc;
 }
 static void screen_yield(void *u){(void)u;os_time_dly(1);}
@@ -85,6 +87,12 @@ int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx
         snprintf(out+n,sizeof(out)-n," enc=%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
                  (long)encoders.count[0],(long)encoders.count[1],(long)encoders.count[2],(long)encoders.count[3],(long)encoders.count[4],(long)encoders.count[5],(long)encoders.count[6]);
         release(&input_lock,f);reply(ctx,out);return 1;
+    }
+    if(!strcmp(s,"MDX DISPLAY")) {
+        char out[200];unsigned f=take(&control_lock);
+        snprintf(out,sizeof(out),"MDX DISPLAY frame=%lu fps10=%lu rows=%lu skipped=%lu max_ms=%lu target_fps=20\n",
+            (unsigned long)screen_frame,(unsigned long)ui_fps10,(unsigned long)ui_rows,(unsigned long)ui_skipped,(unsigned long)ui_max_ms);
+        release(&control_lock,f);reply(ctx,out);return 1;
     }
     if(!strcmp(s,"MDX TIMING")) {
         char out[200];unsigned gap,late,minimum,events,missing,render;
@@ -212,27 +220,36 @@ static void action(unsigned op,unsigned a,unsigned b) {
     else if(op==FM1_MDX_NOTE)rc=fm1_mdx_note(&player,a,(int)b);
     if(rc){unsigned f=take(&control_lock);control.error=(unsigned)rc;release(&control_lock,f);}
 }
-/* UI renders one scanline per refill opportunity. */
-static fm1_screen_text ui;
-static void ui_text(void) {
-    unsigned i;snprintf(ui[0],40,"FM1 MDX %s",control.running?"PLAY":"STOP");
-    snprintf(ui[1],40,"%s",uploaded_song?"USB RAM":"FLASH DEMO");
-    snprintf(ui[2],40,"TRACK %u %s",player.selected+1,(player.mute_mask&(1u<<player.selected))?"KARAOKE":"MDX");
-    for(i=0;i<8;i++)ui[3][i]=(player.mute_mask&(1u<<i))?'-':(char)('1'+i);ui[3][8]=0;
-    snprintf(ui[4],40,"KNOB 1 TRACK FX MUTE");
-    snprintf(ui[5],40,"PLAY STOP  OCT %d",keyboard_octave);
+/* Bounded dirty-row batches. The same frozen state renders LCD and SHOT. */
+static fm1_screen_view ui;
+static void ui_update(void) {
+    unsigned i;fm1_screen_title(&ui,player.mdx.title.data,player.mdx.title.size);
+    ui.running=(uint8_t)control.running;ui.selected=player.selected;ui.mutes=player.mute_mask;
+    ui.tracks=player.mdx.track_count;ui.uploaded=(uint8_t)uploaded_song;ui.octave=(int8_t)keyboard_octave;
+    ui.seconds=(uint32_t)(player.cycles/RETROFM_PL_CLOCK_HZ);
+    fm1_meters_spectrum(&player.meters,ui.spectrum);
+    for(i=0;i<16;i++) {
+        unsigned value=fm1_meters_level(player.meters.parts[i]);player.meters.parts[i]=0;
+        /*50ms frame decay, roughly60dB/sec; caps decay more slowly. */
+        ui.parts[i]=ui.parts[i]>13?ui.parts[i]-13:0;if(value>ui.parts[i])ui.parts[i]=(uint8_t)value;
+        ui.hold[i]=ui.hold[i]>4?ui.hold[i]-4:0;if(value>ui.hold[i])ui.hold[i]=(uint8_t)value;
+    }
+    for(i=0;i<2;i++){ui.stereo[i]=fm1_meters_level(player.meters.stereo[i]);player.meters.stereo[i]=0;}
+    if(!control.running){memset(ui.spectrum,0,sizeof(ui.spectrum));memset(&player.meters,0,sizeof(player.meters));}
 }
 static int ui_row(unsigned y) {
     uint8_t col[4]={0,0,0,239},rows[4]={0,(uint8_t)(40+y),0,(uint8_t)(40+y)};
     /* y+40 can exceed255; set the high bytes explicitly. */
     rows[0]=rows[2]=(uint8_t)((40+y)>>8);
-    fm1_screen_row(ui,y,row_pixels);
+    fm1_screen_row(&ui,y,row_pixels);
+    if(screen_frame){fm1_screen_row(&screen_shown,y,previous_pixels);if(!memcmp(row_pixels,previous_pixels,480)){ui_skipped++;return 0;}}
+    ui_rows++;
     {uint8_t cmd=0x2a;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,col,4))return -1;cmd=0x2b;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,rows,4))return -1;cmd=0x2c;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,row_pixels,480))return -1;}
     return 0;
 }
 __attribute__((noinline,used))
 static void fm1_peripheral_task(void *u) {
-    struct iis_platform_data pd;unsigned f;uint32_t last_ui=0,last_status=0,changed=0;unsigned row=240;
+    struct iis_platform_data pd;unsigned f;uint32_t last_ui=0,last_status=0,changed=0,ui_started=0;unsigned row=240;
     uint64_t candidate=0,stable=0;int32_t encoder=0;
     (void)u;memset(&pd,0,sizeof(pd));
     lcd_error=fm1_display_test_init();
@@ -289,10 +306,28 @@ static void fm1_peripheral_task(void *u) {
         /* Rendering changes occupancy; use the live reserve for UI/sleep. */
         f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
         if(!lcd_error && (queued>=1470 || !running)) {
-            if(row==240 && (uint32_t)(now-last_ui)>=500){last_ui=now;ui_text();row=0;}
-            if(row<240){lcd_error=ui_row(row++);if(row==240 && !lcd_error){f=take(&control_lock);memcpy(screen_shown,ui,sizeof(ui));if(!++screen_frame)++screen_frame;release(&control_lock,f);}}
+            unsigned batch;
+            if(row==240 && (uint32_t)(now-last_ui)>=50){last_ui=now;ui_started=timer_get_ms();ui_update();row=0;}
+            for(batch=0;row<240 && batch<4;batch++) {
+                /* DMA waits leave IRQs enabled. Recheck reserve before each row. */
+                f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
+                if(running && queued<1470)break;
+                lcd_error=ui_row(row++);if(lcd_error)break;
+                if(row==240) {
+                    uint32_t elapsed=timer_get_ms()-ui_started;
+                    f=take(&control_lock);screen_shown=ui;if(!++screen_frame)++screen_frame;
+                    if(elapsed>ui_max_ms)ui_max_ms=elapsed;
+                    if(!ui_epoch){ui_epoch=timer_get_ms();ui_epoch_frames=screen_frame;}
+                    if(timer_get_ms()-ui_epoch>=1000){ui_fps10=(screen_frame-ui_epoch_frames)*10000u/(timer_get_ms()-ui_epoch);ui_epoch=timer_get_ms();ui_epoch_frames=screen_frame;}
+                    release(&control_lock,f);
+                }
+            }
         }
-        wdt_clear();if(queued>=1470 || !running || audio_error)os_time_dly(1);
+        /* Do not pay a10ms RTOS tick per row. Refill/control between batches;
+           sleep after a completed frame, when idle, or after LCD/audio failure. */
+        wdt_clear();
+        f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
+        if((row==240 || lcd_error || audio_error) && (queued>=1470 || !running || audio_error))os_time_dly(1);
     }
 }
 int fm1_peripheral_start_task(void){return task_create(fm1_peripheral_task,0,"peripheral");}

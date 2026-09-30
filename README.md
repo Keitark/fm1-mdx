@@ -110,6 +110,10 @@ also outside this first candidate. MIDI-note commands are available over CDC.
 
 ## Screen capture
 
+The pending Pocket-style display adds a real stereo FFT, FM8/PCM8 peak meters
+and a20Hz redraw target with audio-reserve checks. See[DISPLAY.md](DISPLAY.md)
+for meter definitions, measured host results and the hardware acceptance boundary.
+
 The new candidate includes a CDC screenshot command:
 
 ```powershell

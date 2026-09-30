@@ -3,6 +3,7 @@
 #include "retrofm_mdx_sequence.h"
 #include "retrofm_pcm.h"
 #include "ym2151.h"
+#include "fm1_meters.h"
 #define FM1_MDX_RATE 44100u
 #define FM1_MDX_BLOCK 128u
 /* One task owns all player calls. Backing files must outlive playback. */
@@ -12,6 +13,7 @@ typedef struct {
     retrofm_mdx_sequencer sequence;
     retrofm_pcm_mixer pcm;
     struct ym2151 opm;
+    fm1_meters meters;
     uint64_t cycles;
     uint32_t remainder,pcm_phase;
     uint16_t mute_mask;
