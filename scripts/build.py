@@ -15,5 +15,6 @@ def main():
     run(['cmake','--build',folder,'--config','Release','--parallel','4'])
     run(['ctest','--test-dir',folder,'-C','Release','--output-on-failure'])
     run([sys.executable,ROOT/'firmware/mdx/tests/test_client.py','-v'])
+    run([sys.executable,ROOT/'firmware/mdx/tests/test_screenshot.py','-v'])
     run([sys.executable,ROOT/'firmware/usb-audio/test_profile.py','-v'])
 if __name__=='__main__':main()

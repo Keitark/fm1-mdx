@@ -136,3 +136,31 @@ power destinations and gateway instructions.
 Hardware enumeration, duplex sound, conversion quality, latency, scheduling
 headroom, concurrent CDC operation and recovery are pending. No USB audio
 performance claim follows from the offline checks. See[USB_AUDIO.md](USB_AUDIO.md).
+
+## Screenshot-enabled candidates
+
+The CDC screenshot feature freezes the last completed240x240 UI frame and
+regenerates packed pixels with the same renderer that writes the LCD. It adds
+about512 bytes of state, with no full framebuffer. CRC preparation yields every
+eight rows and does not hold the control lock while rendering. The client
+validates transfer tokens, offsets, lengths and CRC before saving the PNG.
+
+Five native CTest groups, six client tests, three screenshot Python tests and
+the UAC descriptor test pass. Tests compare every captured pixel with LCD row
+output, keep captures immutable across UI changes, reject stale/malformed
+requests and corruption, validate PNG chunk CRCs and check scheduling yields.
+A host fixture PNG was decoded and visually inspected; it is not device evidence.
+
+Both screenshot-enabled profiles pass their static audits:
+
+- CDC:182,160 application bytes,198,188 bytes of pre-allocation heap; SHA256
+  `5ca92c98a62bc544921233eab27c2f3025dbbd64fec6301785543eea7e463d52`.
+- Composite audio + CDC:184,784 application bytes,189,420 bytes of pre-allocation
+  heap; SHA256 `046be484aacdc008974abfd65eeefd762eb541e2560048506e3eb85689fc0b90`.
+
+Reviewed trace offsets are+340 for CDC and+348 for composite. Reviewed LRC/LRC
+callback/low-power operand tuples are+220/+232/+256 and+228/+240/+264 respectively.
+The normalized SDK power hash remains unchanged; linked-ELF descriptor and power
+corruption tests still reject changes. These candidates have not been flashed.
+Live screen matching and audio continuity during capture remain bench gates.
+See[SCREENSHOT.md](SCREENSHOT.md) for commands and capture semantics.

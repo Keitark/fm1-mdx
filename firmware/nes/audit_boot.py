@@ -202,9 +202,15 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
             # Panel/octave link: ota_status0x1c4b910 +336 = trace0x1c4ba60;
             # reviewed store0x200276c: d1 ec 03 15 = [++r0=336]=r1.
             if usb_mdx:encodings.update({300:'d1 ec 0f 12',312:'d1 ec 0b 13',316:'d1 ec 0f 13',336:'d1 ec 03 15'})
+            # Screenshot CDC link: ota_status0x1c4b910 +340 = trace0x1c4ba64;
+            # reviewed store0x200276c: d1 ec 07 15. Same wrapper/marker.
+            if usb_mdx:encodings.update({340:'d1 ec 07 15'})
             # Composite link: ota_status0x1c4db50 +344 = trace0x1c4dca8;
             # reviewed store0x200276c: d1 ec 0b 15. Wrapper otherwise unchanged.
             if usb_audio:encodings.update({344:'d1 ec 0b 15'})
+            # Screenshot composite link: ota_status0x1c4db50 +348 = trace0x1c4dcac;
+            # reviewed store0x200276c: d1 ec 0f 15. Same wrapper/marker.
+            if usb_audio:encodings.update({348:'d1 ec 0f 15'})
             require(delta in encodings,'USB trace merged-global offset changed: '+str(delta))
             struct.pack_into('<I',expected_wrapper,4,value('ota_status'))
             expected_wrapper[14:16]=bytes.fromhex(encodings[delta])

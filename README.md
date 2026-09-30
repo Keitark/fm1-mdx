@@ -106,6 +106,18 @@ CDC song loading is implemented; USB mass-storage drag-and-drop and persistent
 uploaded-song storage are not implemented. USB MIDI and TRS/BLE MIDI input are
 also outside this first candidate. MIDI-note commands are available over CDC.
 
+## Screen capture
+
+The new candidate includes a CDC screenshot command:
+
+```powershell
+python firmware/mdx/usb_client.py screenshot --port COM10 --output fm1-screen.png
+```
+
+It saves the last completed240x240 MDX UI frame as a CRC-checked PNG while
+playback continues. See[SCREENSHOT.md](SCREENSHOT.md) for capture semantics.
+This feature passes host and firmware checks but is not installed on FM1 yet.
+
 ## Layout and provenance
 
 `firmware/mdx` holds the player, original sample generator, USB client and tests.
