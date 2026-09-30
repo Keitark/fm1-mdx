@@ -118,7 +118,8 @@ python firmware/mdx/usb_client.py screenshot --port COM10 --output fm1-screen.pn
 
 It saves the last completed240x240 MDX UI frame as a CRC-checked PNG while
 playback continues. See[SCREENSHOT.md](SCREENSHOT.md) for capture semantics.
-This feature passes host and firmware checks but is not installed on FM1 yet.
+This feature is installed on FM1 and has transferred a completed screen while
+OutRun USB recording continued with zero reported underruns. See[VALIDATION.md](VALIDATION.md).
 
 ## Layout and provenance
 

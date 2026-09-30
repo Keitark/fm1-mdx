@@ -254,4 +254,33 @@ matched60-second OutRun render is byte-identical to the preceding candidate:
 Six CTest groups, client/screenshot/descriptor checks and five linked corruption
 checks pass. The static audit needs no new instruction/layout exceptions.
 This optimization removes software floating-point work from output shaping;
-its hardware speed benefit and audible acceptance remain pending.
+its deployment and hardware results are recorded below.
+
+## Integer output optimization installation
+
+The user approved the exact follow-up image on2026-09-30. Code at`61eb729`
+was installed with45 verified sectors and one exact1MiB readback, SHA256
+`1c671a1c09840f15d0dea5411d3cdbd04febc1dee6b9551a969f2b15e85c36e6`.
+Application SHA256 is
+`0af9e0eadf6b2fa120553c3f30d94df5d2621ed0ba7b642570a14cfe9d479f31`.
+Both earlier composite images remain saved privately. One reset was sent;
+successful serial observation resolved the known reset-log decoding error.
+Demo frames advanced543,104 to984,320 with zero underruns or peripheral errors.
+
+OutRun was reloaded into volatile RAM with all tracks unmuted. A30-second
+input-only USB capture produced1,440,000 stereo48kHz frames with peak6111 and
+no synth underruns, rebuffer events, rebuffer-silence frames, USB underruns,
+overruns or bad packets. During the same capture, the CRC-checked240x240 screen
+transfer completed and showed PLAY / USB RAM. Minimum primed fill stayed960
+frames; coarse callback maximum10ms and late count0 reflect the SDK's10ms clock,
+not a sub-tick hardware deadline measurement. Physical listening acceptance
+remains separate from these counters and the USB recording path.
+
+A subsequent120-second input-only recording produced5,760,000 stereo frames,
+peak7376 and no clipped samples. Five streaming snapshots and the final status
+show zero MDX underruns, rebuffer events or rebuffer-silence frames. USB capture
+added120,011 packets with zero underruns, overruns or malformed packets; primed
+minimum fill remained960 frames. No capture script opened PC playback. Between
+the two recordings, a separate brief PC return supplied3,700 packets and
+registered two PC playback underruns; both values stayed unchanged throughout
+the120-second test. They do not describe the MDX or USB capture buffers.
