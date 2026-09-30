@@ -89,6 +89,44 @@ void fm1_screen_row(const fm1_screen_view *v,unsigned y,uint8_t out[480]) {
     uint8_t r[240];unsigned x;fm1_screen_indices(v,y,r);
     for(x=0;x<240;x++){uint16_t c=fm1_screen_palette[r[x]];out[2*x]=(uint8_t)(c>>8);out[2*x+1]=(uint8_t)c;}
 }
+int fm1_screen_row_changed(const fm1_screen_view *a,const fm1_screen_view *b,unsigned y) {
+    /* Conservative field dependencies: a false result guarantees identical
+       pixels. No second rasterization, hash collisions or framebuffer needed. */
+    if(y>=240)return 0;
+    if(y>=8 && y<15)return a->seconds!=b->seconds || a->running!=b->running;
+    if(y>=28 && y<35)return memcmp(a->title,b->title,sizeof(a->title))!=0;
+    if(y>=43 && y<50)return a->uploaded!=b->uploaded || memcmp(a->subtitle,b->subtitle,sizeof(a->subtitle))!=0;
+    if(y>=76 && y<111) {
+        unsigned d=110-y,seg=d/3,i;if(d%3==2)return 0;
+        for(i=0;i<24;i++)if((seg*3<(a->spectrum[i]*35u+254)/255)!=(seg*3<(b->spectrum[i]*35u+254)/255))return 1;
+        return 0;
+    }
+    if(y>=121 && y<125)return a->stereo[0]*210u/255!=b->stereo[0]*210u/255;
+    if(y>=129 && y<133)return a->stereo[1]*210u/255!=b->stereo[1]*210u/255;
+    if((y>=149 && y<178)||(y>=190 && y<219)) {
+        unsigned first=y<180?0:8,i;int rel=(int)y-(first?192:151);
+        if(a->selected!=b->selected && ((a->selected>=first && a->selected<first+8) ||
+            (b->selected>=first && b->selected<first+8)))return 1;
+        for(i=first;i<first+8;i++) {
+            unsigned ma=(a->mutes>>i)&1,mb=(b->mutes>>i)&1;
+            if(rel>=20 && rel<27 && ma!=mb)return 1;
+            if(rel>=0 && rel<=16) {
+                unsigned d=16-(unsigned)rel,seg=d/3;
+                if(d%3!=2) {
+                    unsigned ca=a->parts[i]>seg*255/6?(ma?15:seg<2?10:seg<4?11:14):3;
+                    unsigned cb=b->parts[i]>seg*255/6?(mb?15:seg<2?10:seg<4?11:14):3;
+                    if(ca!=cb)return 1;
+                }
+                unsigned ha=a->hold[i] && rel==15-(int)((a->hold[i]-1)*6/255)*3;
+                unsigned hb=b->hold[i] && rel==15-(int)((b->hold[i]-1)*6/255)*3;
+                if(ha!=hb || (ha && ma!=mb))return 1;
+            }
+        }
+        return 0;
+    }
+    if(y>=222 && y<229)return a->selected!=b->selected || a->mutes!=b->mutes || a->octave!=b->octave;
+    return 0;
+}
 static int hex8(const char *s,uint32_t *v) {
     unsigned i;*v=0;
     for(i=0;i<8;i++){unsigned d;char c=s[i];if(c>='0'&&c<='9')d=c-'0';else if(c>='a'&&c<='f')d=c-'a'+10;else if(c>='A'&&c<='F')d=c-'A'+10;else return 0;*v=(*v<<4)|d;}

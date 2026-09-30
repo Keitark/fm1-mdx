@@ -52,8 +52,12 @@ class LinkTests(unittest.TestCase):
             self.check_elf(self.corrupt('power_init', 0x3c2))
 
     def test_lrc_destination_corruption_is_rejected(self):
+        # LTO uses a small preincrement store below256, otherwise a six-byte
+        # add-immediate/store. Corrupt the destination operand in either form.
+        delta = self.symbols['lrc.0'] - self.symbols['ota_status']
+        operand = 0x0d8 if delta < 256 else 0x0d6
         with self.assertRaisesRegex(ValueError, 'Power merged-global target changed: lrc.0'):
-            self.check_elf(self.corrupt('power_init', 0x0d4))
+            self.check_elf(self.corrupt('power_init', operand))
 
     def test_power_gateway_corruption_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'Board power gateway instructions changed'):

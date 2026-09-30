@@ -21,6 +21,7 @@ typedef struct {
 extern const uint16_t fm1_screen_palette[16];
 void fm1_screen_indices(const fm1_screen_view *,unsigned y,uint8_t indices[240]);
 void fm1_screen_row(const fm1_screen_view *,unsigned y,uint8_t rgb565[480]);
+int fm1_screen_row_changed(const fm1_screen_view *,const fm1_screen_view *,unsigned y);
 void fm1_screen_title(fm1_screen_view *,const uint8_t *,size_t);
 int fm1_screen_command(fm1_screen *,fm1_screen_snapshot,void (*yield)(void *),void *,const char *,uint32_t,fm1_mdx_reply,void *);
 #endif

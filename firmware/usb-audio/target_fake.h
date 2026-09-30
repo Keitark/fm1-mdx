@@ -11,6 +11,13 @@ struct usb_ctrlrequest {uint8_t bRequestType,bRequest;uint16_t wValue,wIndex,wLe
 #define USB_EP0_SET_STALL 7
 #define USB_EP0_STAGE_SETUP 0
 #define USB_ENDPOINT_XFER_ISOC 1
+#define TXCSRP_TxPktRdy 0x01
+#define TXCSRP_FlushFIFO 0x08
+#define TXCSRP_ClrDataTog 0x40
+#define TXCSRP_ISOCHRONOUS 0x4000
+#define RXCSRP_FlushFIFO 0x10
+#define RXCSRP_ClrDataTog 0x80
+#define RXCSRP_ISOCHRONOUS 0x4000
 #define local_irq_save(f) do{f=0;}while(0)
 #define local_irq_restore(f) ((void)(f))
 void arch_spin_lock(spinlock_t *);
@@ -22,6 +29,11 @@ u32 usb_g_iso_write(usb_dev,u32,void *,u32);
 void usb_clr_intr_txe(usb_dev,u32);
 void usb_clr_intr_rxe(usb_dev,u32);
 void usb_enable_ep(usb_dev,u32);
+u32 usb_read_txcsr(usb_dev,u32);
+void usb_write_txcsr(usb_dev,u32,u32);
+void usb_write_rxcsr(usb_dev,u32,u32);
+void usb_set_intr_txe(usb_dev,u32);
+void usb_set_intr_rxe(usb_dev,u32);
 u32 usb_g_ep_config(usb_dev,u32,u32,u32,u8 *,u32);
 u32 usb_g_set_intr_hander(usb_dev,u32,void (*)(struct usb_device_t *,u32));
 u32 usb_set_interface_hander(usb_dev,u32,u32 (*)(struct usb_device_t *,struct usb_ctrlrequest *));

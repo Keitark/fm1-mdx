@@ -13,9 +13,30 @@ static int snapshot(void *u,fm1_screen_view *view,uint32_t *frame){(void)u;if(!r
 static void reply(void *u,const char *s){(void)u;CHECK(strlen(s)<sizeof(answer));strcpy(answer,s);}
 static void command(const char *s,uint32_t now){CHECK(fm1_screen_command(&screen,snapshot,yield,0,s,now,reply,0));}
 static unsigned digit(char c){return c<='9'?c-'0':c-'a'+10;}
+static void dirty_rows(void) {
+    fm1_screen_view a={0},b;uint8_t old[480],next[480];unsigned trial,y,field;uint32_t seed=42;
+    strcpy(a.title,"OLD TITLE");strcpy(a.subtitle,"OLD SUBTITLE");
+    for(trial=0;trial<300;trial++) {
+        b=a;field=trial%11;seed=seed*1664525u+1013904223u;
+        switch(field) {
+        case 0:b.seconds=seed;break;case 1:b.running^=1;break;
+        case 2:b.title[seed%32]=(char)('A'+seed%26);break;
+        case 3:b.subtitle[seed%38]=(char)('A'+seed%26);break;
+        case 4:b.uploaded^=1;break;case 5:b.spectrum[seed%24]=(uint8_t)seed;break;
+        case 6:b.stereo[seed%2]=(uint8_t)seed;break;
+        case 7:b.parts[seed%16]=(uint8_t)seed;b.hold[(seed>>8)%16]=(uint8_t)(seed>>8);break;
+        case 8:b.selected=(uint8_t)(seed%8);break;case 9:b.mutes=(uint16_t)seed;break;
+        case 10:b.octave=(int8_t)(seed%6-3);break;
+        }
+        for(y=0;y<240;y++){fm1_screen_row(&a,y,old);fm1_screen_row(&b,y,next);
+            if(!fm1_screen_row_changed(&a,&b,y))CHECK(!memcmp(old,next,480));}
+        a=b;
+    }
+    for(y=0;y<240;y++)CHECK(!fm1_screen_row_changed(&a,&a,y));
+}
 int main(void) {
     unsigned offset,i,crc=0xffffffffu,token;uint8_t row[480];char s[80];
-    command("MDX SHOT BEGIN",0);CHECK(strstr(answer,"NO_COMPLETE_FRAME"));
+    dirty_rows();command("MDX SHOT BEGIN",0);CHECK(strstr(answer,"NO_COMPLETE_FRAME"));
     strcpy(shown.title,"SUPER LAYDOCK");shown.running=1;shown.mutes=1;shown.spectrum[4]=200;shown.parts[8]=160;ready=1;
     command("MDX SHOT BEGIN",1);token=screen.token;CHECK(screen.active && screen.frame==7 && yields==60);
     memset(&shown,0,sizeof(shown)); /* Snapshot remains immutable while UI changes. */

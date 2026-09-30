@@ -30,8 +30,13 @@ u32 usb_g_iso_write(usb_dev id,u32 ep,void *p,u32 n){
 void usb_clr_intr_txe(usb_dev id,u32 ep){REQUIRE(!id&&ep==1);}
 void usb_clr_intr_rxe(usb_dev id,u32 ep){REQUIRE(!id&&ep==1);}
 void usb_enable_ep(usb_dev id,u32 ep){REQUIRE(!id&&ep==1);}
+u32 usb_read_txcsr(usb_dev id,u32 ep){REQUIRE(!id&&ep==1);return 0;}
+void usb_write_txcsr(usb_dev id,u32 ep,u32 v){REQUIRE(!id&&ep==1&&v==(TXCSRP_FlushFIFO|TXCSRP_ClrDataTog|TXCSRP_ISOCHRONOUS));}
+void usb_write_rxcsr(usb_dev id,u32 ep,u32 v){REQUIRE(!id&&ep==1&&v==(RXCSRP_FlushFIFO|RXCSRP_ClrDataTog|RXCSRP_ISOCHRONOUS));}
+void usb_set_intr_txe(usb_dev id,u32 ep){REQUIRE(!id&&ep==1&&interrupts[1]);}
+void usb_set_intr_rxe(usb_dev id,u32 ep){REQUIRE(!id&&ep==1&&interrupts[0]);}
 u32 usb_g_ep_config(usb_dev id,u32 ep,u32 type,u32 ie,u8 *p,u32 n){
-    REQUIRE(!id&&type==1&&ie==1&&n==192&&!((uintptr_t)p%64));dma[ep>>7]=p;return 0;
+    REQUIRE(!id&&type==1&&!ie&&n==192&&!((uintptr_t)p%64));dma[ep>>7]=p;return 0;
 }
 u32 usb_g_set_intr_hander(usb_dev id,u32 ep,void (*h)(struct usb_device_t *,u32)){
     REQUIRE(!id&&(ep==1||ep==0x81));interrupts[ep>>7]=h;return 0;

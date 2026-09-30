@@ -61,6 +61,21 @@ PC playback has a32-frame start/recovery/release ramp (about0.73ms at the DAC)
 to avoid a full-scale step when an application stops supplying packets. This
 does not alter the MDX recording tap.
 
+The new candidate checks the hardware TxPktRdy flag before encoding into the
+capture DMA buffer. A busy completion does not drain the sample FIFO, overwrite
+that buffer, or call the SDK's potentially polling writer from the IRQ. Stream
+stop flushes the direction's FIFO using the pinned SDK CSR definitions; start
+configures DMA with completion interrupts masked, primes capture, then enables
+its interrupt. Both directions retain192-byte whole stereo-frame packets.
+
+`python firmware/mdx/usb_client.py usb --port COM4` reports actual full SDK
+submissions, short submissions, busy callbacks, start/stop counts and last CSR/
+write result. Existing `tx` counts encoder attempts, not successful transport.
+Even a full SDK return only verifies submission, not bytes received by Windows.
+Busy-DMA preservation, short writes and restart flushing have host regressions.
+They address a concrete lifecycle risk; a bench test must still establish
+whether the observed OBS mute/unmute byte corruption is fixed.
+
 `python firmware/mdx/usb_client.py timing --port COM4` reports coarse DAC
 callback spacing, callbacks separated by at least20ms, minimum primed queue
 fill, rebuffer events/missing frames and longest render duration. Linked SDK

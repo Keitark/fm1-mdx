@@ -27,6 +27,20 @@ occupancy must be at least1470 frames before each LCD row. Synchronous stock DMA
 waits keep IRQs enabled; LCD pins, clock and controller setup are unchanged.
 The old10ms sleep after every row is removed. No full-frame pixel buffer is added.
 
+The latest candidate checks row-specific visual dependencies before rendering.
+Static rows require no rasterization. FFT/bar segments compare their displayed
+thresholds; peak markers compare positions; text compares relevant fields. A
+changed row is rendered once, replacing old/new rasterization and pixel comparison.
+The dependency check is conservative, without hashes. Regression mutations
+check that every skipped row has identical pixels; replay checks completed LCD
+RAM against the full renderer. Hardware FPS remains to be measured.
+
+For the updated renderer, the same180s Super Laydock replay at+500ppm completes
+3598 views with85117 written/778403 skipped rows and zero audio errors. The
+slightly conservative dependencies write about2.4% more rows than exact pixel
+comparison in that case, while eliminating the second render and all renders
+of unchanged rows. Host wire timing still excludes PI32 execution costs.
+
 `python firmware/mdx/usb_client.py display --port COM4` returns completed-frame
 count, `fps10` (ten times FPS, over the last reporting interval), written/skipped
 rows, maximum frame-completion time and the20Hz target. An unchanged view still
@@ -83,5 +97,5 @@ ADC failure and final teardown still fail muted.
 Row rendering skips irrelevant spectrum/part regions and removes repeated
 formatting of16 static labels on every row. A measured song preview remains
 pixel-identical. New `MDX VOLUME` and `MDX SCAN` commands expose volume target,
-ADC progress and scanner failure snapshots. Correction host tests pass; a new
-exact-image approval is required before its hardware FPS/control/audio test.
+ADC progress and scanner failure snapshots. Correction host tests pass; hardware FPS, controls and audio still require
+bench validation. The user subsequently requested flashing after investigation.

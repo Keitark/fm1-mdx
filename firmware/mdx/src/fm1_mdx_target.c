@@ -34,7 +34,8 @@ static fm1_volume mdx_volume;
 static fm1_encoders encoders;
 static fm1_audio_startup envelope;
 static spinlock_t control_lock,audio_lock,input_lock;
-static struct {unsigned request,a,b,running,available,selected,mutes,frames,error,underruns,shutdown,quiescent,panel;int octave,last_panel;} control;
+typedef struct {unsigned request,a,b,running,available,selected,mutes,frames,error,underruns,shutdown,quiescent,panel;int octave,last_panel;} fm1_mdx_control;
+static fm1_mdx_control control;
 static int keyboard_octave;
 static unsigned keyboard_slot=41,keyboard_note;
 static int16_t ring[2048][2],block[FM1_MDX_BLOCK*2];
@@ -45,7 +46,6 @@ static unsigned primed,audio_enabled,audio_playing,scan_enabled,scan_ticks;
 static uint8_t row_pixels[480];
 static fm1_screen_view screen_shown;
 static uint32_t ui_rows,ui_skipped,ui_max_ms,ui_fps10,ui_epoch,ui_epoch_frames;
-static uint8_t previous_pixels[480];
 static uint32_t screen_frame;
 static fm1_screen screen_transfer;
 static volatile uint32_t mdx_lcd_registers[20],mdx_lcd_phase;
@@ -69,15 +69,21 @@ static int request(void *u,unsigned op,unsigned a,unsigned b) {
     control.request=op;control.a=a;control.b=b;return 0;
 }
 static void status(void *u,char *out,size_t n) {
-    (void)u;
+    const fm1_mdx_control *v=(const fm1_mdx_control *)u;
     snprintf(out,n,"MDX running=%u pending=%u selected=%u mute=%04x frames=%u underruns=%u error=%u upload=%u ready=%u lcd=%d keys=%d audio=%d oct=%d panel=%04x last=%d\n",
-             control.running,control.request,control.selected,control.mutes,control.frames,control.underruns,control.error,upload.active,upload.ready,lcd_error,key_error,audio_error,control.octave,control.panel,control.last_panel);
+             v->running,v->request,v->selected,v->mutes,v->frames,v->underruns,v->error,upload.active,upload.ready,lcd_error,key_error,audio_error,v->octave,v->panel,v->last_panel);
 }
 int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx) {
     fm1_mdx_usb_io io={0,idle,request,status};int result;unsigned f;
+    if(!strcmp(s,"MDX STATUS")) {
+        /* Upload flags are USB-task owned; snapshot only shared controls. */
+        fm1_mdx_control v;char out[224];f=take(&control_lock);v=control;release(&control_lock,f);
+        status(&v,out,sizeof(out));reply(ctx,out);return 1;
+    }
     if(fm1_screen_command(&screen_transfer,screen_snapshot,screen_yield,0,s,now,reply,ctx))return 1;
 #ifdef FM1_USB_AUDIO
     if(!strcmp(s,"MDX AUDIO")){char out[224];fm1_usb_audio_status(out,sizeof(out));reply(ctx,out);return 1;}
+    if(!strcmp(s,"MDX USB")){char out[224];fm1_usb_audio_transport_status(out,sizeof(out));reply(ctx,out);return 1;}
 #endif
     if(!strcmp(s,"MDX VOLUME")) {
         char out[200];fm1_volume v;unsigned gain;
@@ -103,10 +109,11 @@ int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx
         release(&input_lock,f);reply(ctx,out);return 1;
     }
     if(!strcmp(s,"MDX DISPLAY")) {
-        char out[200];unsigned f=take(&control_lock);
+        char out[200];uint32_t frame,fps,rows,skipped,maximum;unsigned f=take(&control_lock);
+        frame=screen_frame;fps=ui_fps10;rows=ui_rows;skipped=ui_skipped;maximum=ui_max_ms;release(&control_lock,f);
         snprintf(out,sizeof(out),"MDX DISPLAY frame=%lu fps10=%lu rows=%lu skipped=%lu max_ms=%lu target_fps=20\n",
-            (unsigned long)screen_frame,(unsigned long)ui_fps10,(unsigned long)ui_rows,(unsigned long)ui_skipped,(unsigned long)ui_max_ms);
-        release(&control_lock,f);reply(ctx,out);return 1;
+            (unsigned long)frame,(unsigned long)fps,(unsigned long)rows,(unsigned long)skipped,(unsigned long)maximum);
+        reply(ctx,out);return 1;
     }
     if(!strcmp(s,"MDX TIMING")) {
         char out[200];unsigned gap,late,minimum,events,missing,render;
@@ -257,8 +264,8 @@ static int ui_row(unsigned y) {
     uint8_t col[4]={0,0,0,239},rows[4]={0,(uint8_t)(40+y),0,(uint8_t)(40+y)};
     /* y+40 can exceed255; set the high bytes explicitly. */
     rows[0]=rows[2]=(uint8_t)((40+y)>>8);
+    if(screen_frame && !fm1_screen_row_changed(&screen_shown,&ui,y)){ui_skipped++;return 0;}
     fm1_screen_row(&ui,y,row_pixels);
-    if(screen_frame){fm1_screen_row(&screen_shown,y,previous_pixels);if(!memcmp(row_pixels,previous_pixels,480)){ui_skipped++;return 0;}}
     ui_rows++;
     {uint8_t cmd=0x2a;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,col,4))return -1;cmd=0x2b;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,rows,4))return -1;cmd=0x2c;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,row_pixels,480))return -1;}
     return 0;
