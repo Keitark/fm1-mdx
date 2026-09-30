@@ -216,8 +216,8 @@ and recovery. It uses RetroFM's measured PCM/FM ratio49700/32768 with the
 existing common1/2 gain. It does not copy the separate X68Sound PCM trim into
 this different decoder. A matched60-second private OutRun host comparison
 measures PCM RMS+3.59dB, PCM peak3415 and mixed peak6424, with no clipped samples.
-This is a starting balance derived from the earlier implementation, not a new
-cross-engine calibration or physical listening acceptance.
+This was a starting balance derived from the earlier implementation. The native
+MXDRV comparison below supersedes it; physical listening acceptance stays open.
 
 Host regressions exercise exact-empty versus genuinely starved DMA buffers,
 rebuffer accounting, delayed callbacks, signed PCM interpolation, saturation
@@ -284,3 +284,34 @@ minimum fill remained960 frames. No capture script opened PC playback. Between
 the two recordings, a separate brief PC return supplied3,700 packets and
 registered two PC playback underruns; both values stayed unchanged throughout
 the120-second test. They do not describe the MDX or USB capture buffers.
+
+## Native MXDRV balance candidate (2026-09-30)
+
+The user's listening comparison found PCM substantially louder in native
+MXDRV/X68Sound. Isolated120-second OutRun stems at44.1kHz stereo16-bit confirm
+it: installed FM1 PCM RMS325.55 versus native MXDRV1304.44 (+12.056dB), while
+FM RMS1317.53 versus2506.69 differs by5.587dB. PCM is therefore6.469dB lower
+relative to FM. Isolation is verified by recombining stems: FM1 is exact and
+MXDRV differs by at most1LSB. MXDRV resets its channel mask at Play, so reference
+isolation is applied and read back after Play.
+
+The new candidate uses PCM output gain8/5 instead of49700/65536 and keeps FM
+at1/2. Its integer product is bounded within32 bits and requires no floating
+point or64-bit division. A new120-second host render measures PCM+6.489dB,
+within0.020dB of the native MXDRV PCM/FM RMS ratio. FM-only output is byte-identical
+to the installed source; mixed peak9707 and zero clipped samples leave headroom
+for the tested song. This is OutRun balance calibration, not equivalence between
+the different emulators, filter responses or volume curves.
+
+Host6 CTests,7 client checks,3 screenshot checks and the descriptor check pass.
+The composite board link, static audit and all5 linked corruption tests pass.
+Application payload185488 bytes, SHA256
+`ae04821634c56876fd308e99a30b3d8c1c631c4f0c73e07ea85468e32d57066a`.
+Offline unit-image packaging against the observed installed baseline succeeds:
+candidate1MiB SHA256
+`06c55a3ea1310b91fff144949e6906823e697c305683d89d3979292794c51d11`.
+The installed image remains
+`1c671a1c09840f15d0dea5411d3cdbd04febc1dee6b9551a969f2b15e85c36e6`,
+and its exact rollback is retained privately. The new candidate has not been
+flashed; exact-candidate authorization and bench playback/counters remain pending.
+All recordings, songs, stems and unit images remain outside Git.
