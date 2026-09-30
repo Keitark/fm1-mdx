@@ -15,18 +15,18 @@ colors and pixel renderer used to write the LCD. This is a software screenshot;
 it does not read pixels back from the LCD controller or show physical panel
 faults. A partly updated LCD may be ahead of the captured completed frame.
 
-The USB task freezes240 bytes of frame text/state, then regenerates its indexed
+The USB task freezes a compact frame view, then regenerates its indexed
 pixels during transfer. The displayed UI can keep updating. No full framebuffer
 is allocated, playback is not stopped, and CRC generation yields to other tasks
-every eight rows. Actual capture-time audio underruns still need a bench check.
+every four rows. Actual capture-time audio underruns still need a bench check.
 Capture requires one completed LCD frame and rejects a known LCD error.
 
 The protocol is:
 
 - `MDX SHOT BEGIN`: freeze a completed frame and return its transfer token,
-  dimensions, packed2-bit format, CRC32 and displayed frame number.
+  dimensions, packed4-bit format (`I4`), CRC32 and displayed frame number.
 - `MDX SHOT READ <8-hex-token> <8-hex-byte-offset>`: return at most96 indexed
-  pixel bytes as hex. Offsets are aligned to96 and bounded to14,400 bytes.
+  pixel bytes as hex. Offsets are aligned to96 and bounded to28,800 bytes.
 - `MDX SHOT END <8-hex-token>`: release the frozen transfer.
 
 A new capture invalidates the old token. Disconnect/reset clears the transfer;
@@ -38,3 +38,8 @@ Host tests compare every screenshot pixel with LCD row output, freeze state
 while the live UI changes, and check timeout/token/bounds behavior. The PC test
 transfers through the real fragmented CDC parser, validates PNG chunks and
 rejects corrupted transfers. Device screenshot matching remains unverified.
+
+The updated PC client also accepts the older `I2` firmware format. The `I4`
+palette expands the renderer's exact RGB565 colors into PNG RGB values. The
+Pocket-style candidate's capture remains bench-unverified; earlier `I2` bench
+evidence does not establish acceptance of this candidate.

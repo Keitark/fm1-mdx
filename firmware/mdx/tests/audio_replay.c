@@ -18,6 +18,10 @@ volatile uint32_t fm1_display_stage;
 volatile int fm1_display_error;
 static unsigned ms,duration,stress,wrap_seeded,restarts,producer_stalls,song_restarts;
 static int drift;
+static unsigned lcd_us,lcd_command,lcd_y,checked_frame;
+static uint8_t lcd_buffer[240][480],previous_parts[16];
+static unsigned part_rises[16],part_falls[16];
+static void advance(unsigned);
 static uint32_t adc;
 static uint64_t dac_clock;
 static void (*worker)(void *),(*tick)(void *),(*alink)(void),(*keyirq)(void);
@@ -27,7 +31,13 @@ void arch_spin_lock(spinlock_t *l){CHECK(!*l);*l=1;}
 void arch_spin_unlock(spinlock_t *l){CHECK(*l);*l=0;}
 int task_create(void (*fn)(void *),void *u,const char *name){(void)u;CHECK(!strcmp(name,"peripheral"));worker=fn;return 0;}
 uint32_t timer_get_ms(void){return ms/10*10;}
-void wdt_clear(void){}
+void wdt_clear(void){
+    if(screen_frame!=checked_frame){unsigned y;uint8_t expected[480];
+        for(y=0;y<240;y++){fm1_screen_row(&screen_shown,y,expected);CHECK(!memcmp(expected,lcd_buffer[y],480));}
+        for(y=0;y<16;y++){part_rises[y]+=screen_shown.parts[y]>previous_parts[y];part_falls[y]+=screen_shown.parts[y]<previous_parts[y];previous_parts[y]=screen_shown.parts[y];}
+        checked_frame=screen_frame;
+    }
+}
 int clk_get(const char *s){(void)s;return 60000000;}
 int iis_open(struct iis_platform_data *pd,unsigned id){CHECK(!id&&pd->data_width==8&&pd->channel_out==8&&pd->sr_points==128);return 0;}
 int iis_set_sample_rate(unsigned rate,unsigned id){CHECK(!id&&rate==44100);return 0;}
@@ -49,7 +59,10 @@ void sys_usec_timer_del(int id){CHECK(id==1);tick=0;}
 int fm1_display_test_init(void){return 0;}
 int fm1_display_test_frame(uint32_t n){(void)n;return 0;}
 void fm1_display_test_stop(void){}
-int fm1_display_write(int data,const uint8_t *b,size_t n){CHECK(b&&n&&(data==0||data==1));return 0;}
+int fm1_display_write(int data,const uint8_t *b,size_t n){CHECK(b&&n&&(data==0||data==1));
+    if(!data){CHECK(n==1);lcd_command=b[0];}
+    else if(lcd_command==0x2b){CHECK(n==4);lcd_y=(b[0]<<8)|b[1];CHECK(lcd_y==((b[2]<<8)|b[3]));}
+    else if(n==480){CHECK(lcd_command==0x2c && lcd_y<240);memcpy(lcd_buffer[lcd_y],b,480);lcd_us+=400;while(lcd_us>=1000){lcd_us-=1000;advance(1);}}return 0;}
 int fm1_wl82_keyscan_async_start(fm1_wl82_keyscan *s,void *u,uint32_t (*clock)(void *)){CHECK(!u&&clock);s->running=1;return 0;}
 void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *s){(void)s;}
 void fm1_wl82_keyscan_async_kick(fm1_wl82_keyscan *s){s->sequence++;}
@@ -74,7 +87,7 @@ static void advance(unsigned n){
 }
 void os_time_dly(int n){
     CHECK(n==1);advance(10); /* pinned SDK OS tick =10ms */
-    if(stress&&ms%47000==0){producer_stalls++;advance(60);}
+    if(stress&&ms/47000>producer_stalls){producer_stalls++;advance(60);}
 }
 static unsigned char *read_file(const char *name,size_t *n){
     FILE *f=fopen(name,"rb");long size;unsigned char *b;
@@ -101,6 +114,9 @@ int main(int argc,char **argv){
     printf("{\"virtual_seconds\":%u,\"ppm\":%d,\"stress\":%u,\"packets\":%u,\"dac_frames\":%u,\"synth_missing\":%u,\"rebuffer_events\":%u,\"usb_errors\":%u,\"stream_restarts\":%u,\"producer_stalls\":%u,\"wrap_seeded\":%u,\"player_error\":%d,\"lcd_error\":%d}\n",duration,drift,stress,replay_usb_packets(),frames,underruns,rebuffer_events,errors,restarts,producer_stalls,wrap_seeded,player.error,lcd_error);
     fprintf(stderr,"Song restarts=%u, playing=%u, sequencer ended=%u\n",song_restarts,player.playing,player.sequence.ended);
     fprintf(stderr,"%s",usb);
+    fprintf(stderr,"Display: frames=%u fps=%.2f rows=%u skipped=%u max_ms=%u (400us/row wire-cost model)\n",screen_frame,(double)screen_frame/duration,ui_rows,ui_skipped,ui_max_ms);
+    {unsigned part;fprintf(stderr,"Part motion rises/falls:");for(part=0;part<16;part++)fprintf(stderr," %u:%u/%u",part+1,part_rises[part],part_falls[part]);fputc('\n',stderr);}
+    if(duration>=5)CHECK(screen_frame>duration*10 && ui_skipped>ui_rows);
     if(strcmp(argv[1],"--demo")){free(m);free(p);}
     CHECK(!player.error&&!lcd_error&&!audio_error);if(!stress)CHECK(!underruns&&!errors);
     if(stress&&duration>=65)CHECK(wrap_seeded&&restarts&&producer_stalls&&rebuffer_events);

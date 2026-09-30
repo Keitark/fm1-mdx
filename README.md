@@ -110,6 +110,11 @@ also outside this first candidate. MIDI-note commands are available over CDC.
 
 ## Screen capture
 
+The pending MMDSP-style display adds32 note-spectrum columns with peak lines,
+16 inline FM8/PCM8 activity meters, embedded credits and a20Hz redraw target
+with audio-reserve checks. L/R meters are removed; internal audio stays unfiltered. See[DISPLAY.md](DISPLAY.md)
+for meter definitions, measured host results and the hardware acceptance boundary.
+
 The new candidate includes a CDC screenshot command:
 
 ```powershell

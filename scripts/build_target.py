@@ -34,7 +34,7 @@ def main():
         defines=make_list(make,'DEFINES')+['-DFM1_USB_CONTROLLER=0','-DFM1_PERIPHERAL_TESTS=1',
             '-DFM1_LCD_STOCK_FILL=1','-DFM1_LCD_STOCK_DMA=1','-DFM1_LCD_STOCK_SEQUENCE=1',
             '-DFM1_MDX_PLAYER=1','-DFM1_TARGET_PI32V2=1','-DFM1_KEYSCAN_DMA2=1',
-            '-DFM1_KEYSCAN_IRQ=1','-DFM1_KEYSCAN_PACED=1']
+            '-DFM1_KEYSCAN_IRQ=1','-DFM1_KEYSCAN_PACED=1','-DFM1_KEYSCAN_CLOCK_QUANTUM_US=10000']
         includes=['-I'+str(MDX/n) for n in ('include','vendor/retrofm','vendor/mdxtools')]
         if a.usb_audio:
             defines+=['-DFM1_USB_AUDIO=1'];includes+=['-I'+str(ROOT/'firmware/usb-audio')]

@@ -12,7 +12,7 @@
 static fm1_mdx_upload upload;
 static fm1_mdx_player player;
 static fm1_screen screen;
-static int snapshot(void *u,fm1_screen_text text,uint32_t *frame){(void)u;memset(text,0,sizeof(fm1_screen_text));snprintf(text[0],40,"FM1 MDX PLAY");snprintf(text[2],40,"TRACK 1 KARAOKE");*frame=7;return 0;}
+static int snapshot(void *u,fm1_screen_view *view,uint32_t *frame){(void)u;memset(view,0,sizeof(*view));strcpy(view->title,"SUPER LAYDOCK");view->running=1;view->mutes=1;view->parts[0]=200;*frame=7;return 0;}
 static int idle(void *u){(void)u;return !player.playing;}
 static int request(void *u,unsigned op,unsigned a,unsigned b){(void)u;
     if(op==FM1_MDX_STOP)fm1_mdx_stop(&player);

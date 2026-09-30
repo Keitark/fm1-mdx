@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(fm1_mdx C)
 enable_testing()
 file(GLOB VENDOR_SOURCES CONFIGURE_DEPENDS vendor/retrofm/*.c vendor/mdxtools/*.c)
-add_library(fm1_mdx src/fm1_mdx.c src/fm1_mdx_mix.c src/fm1_mdx_usb.c src/fm1_screen.c ${VENDOR_SOURCES} samples/demo.c)
+add_library(fm1_mdx src/fm1_mdx.c src/fm1_mdx_mix.c src/fm1_mdx_usb.c src/fm1_screen.c src/fm1_meters.c ${VENDOR_SOURCES} samples/demo.c)
 target_include_directories(fm1_mdx PUBLIC include vendor/retrofm vendor/mdxtools)
 target_compile_features(fm1_mdx PUBLIC c_std_11)
 if(NOT MSVC)
@@ -17,6 +17,11 @@ add_test(NAME mdx_integer_opm_output COMMAND opm_output_tests)
 add_executable(screen_tests tests/test_screen.c)
 target_link_libraries(screen_tests PRIVATE fm1_mdx)
 add_test(NAME mdx_screenshot COMMAND screen_tests)
+add_executable(meter_tests tests/test_meters.c)
+target_link_libraries(meter_tests PRIVATE fm1_mdx)
+add_test(NAME mdx_fft_meters COMMAND meter_tests)
+add_executable(screen_preview tests/screen_preview.c)
+target_link_libraries(screen_preview PRIVATE fm1_mdx)
 add_executable(mdx_usb_pipe tests/usb_pipe.c ../usb-diag/protocol.c)
 target_include_directories(mdx_usb_pipe PRIVATE ../usb-diag)
 target_compile_definitions(mdx_usb_pipe PRIVATE FM1_MDX_PLAYER=1 FM1_PERIPHERAL_TESTS=1)
@@ -46,3 +51,11 @@ target_compile_definitions(mdx_audio_replay PRIVATE FM1_MDX_PLAYER=1 FM1_KEYSCAN
 target_link_libraries(mdx_audio_replay PRIVATE fm1_mdx fm1_uac)
 add_test(NAME mdx_audio_replay_stress COMMAND mdx_audio_replay --demo unused
   audio-replay-demo.wav 65 500 stress)
+
+# Actual scanner driver: quantized-clock watchdog regression, not a stub.
+add_executable(keyscan_clock_tests tests/keyscan_clock.c
+  ../nes/src/fm1_wl82_keyscan.c ../nes/src/fm1_stock_keys.c)
+target_include_directories(keyscan_clock_tests PRIVATE ../nes/include)
+target_compile_definitions(keyscan_clock_tests PRIVATE FM1_WL82_KEYSCAN_TEST=1
+  FM1_KEYSCAN_IRQ=1 FM1_KEYSCAN_DMA2=1 FM1_KEYSCAN_PACED=1 FM1_KEYSCAN_CLOCK_QUANTUM_US=10000)
+add_test(NAME mdx_keyscan_coarse_clock COMMAND keyscan_clock_tests)

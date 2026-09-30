@@ -259,7 +259,9 @@ int fm1_wl82_keyscan_async_raw(fm1_wl82_keyscan *s,uint8_t rows[11]){
     }
     if(s->completions!=s->observed_completions){
         s->observed_completions=s->completions;s->observed_at=now;
-    } else if((uint32_t)(now-s->observed_at)>=10000u){
+    } else if((uint32_t)(now-s->observed_at)>=10000u+FM1_KEYSCAN_CLOCK_QUANTUM_US){
+        /* A quantized clock can jump10ms just1us after an observation.
+           Add one quantum so an apparent gap guarantees10ms of real time. */
         /* Task-side no-progress watchdog, including a lost/masked IRQ with
            PND already set. Never wait here or re-arm a possibly active DMA. */
         status=rd(SPI);

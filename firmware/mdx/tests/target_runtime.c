@@ -7,6 +7,7 @@ volatile uint32_t fm1_display_stage;
 volatile int fm1_display_error;
 static unsigned ms,opened,closed,timer_deleted,key_stopped,lcd_stopped;
 static uint32_t adc;
+static unsigned lcd_command,lcd_y,lcd_first,lcd_last;
 static void (*worker)(void *),(*tick)(void *),(*alink)(void),(*keyirq)(void);
 static void (*output)(void *,u8 *,int,u8);
 static jmp_buf done;
@@ -31,11 +32,15 @@ void sys_usec_timer_del(int id){CHECK(id==1);tick=0;timer_deleted++;}
 int fm1_display_test_init(void){return 0;}
 int fm1_display_test_frame(uint32_t n){(void)n;return 0;}
 void fm1_display_test_stop(void){lcd_stopped++;}
-int fm1_display_write(int data,const uint8_t *b,size_t n){CHECK(b && n && (data==0||data==1));return 0;}
+int fm1_display_write(int data,const uint8_t *b,size_t n){CHECK(b && n && (data==0||data==1));
+    if(!data){CHECK(n==1);lcd_command=b[0];}
+    else if(lcd_command==0x2b){CHECK(n==4 && !b[0] && !b[2] && b[1]==b[3] && b[1]<240);lcd_y=b[1];}
+    else if(n==480){CHECK(lcd_command==0x2c);if(!lcd_y)lcd_first++;if(lcd_y==239)lcd_last++;}
+    return 0;}
 int fm1_wl82_keyscan_async_start(fm1_wl82_keyscan *s,void *u,uint32_t (*clock)(void *)){CHECK(!u && clock);s->running=1;return 0;}
 void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *s){(void)s;}
 void fm1_wl82_keyscan_async_kick(fm1_wl82_keyscan *s){s->sequence++;}
-int fm1_wl82_keyscan_async_raw(fm1_wl82_keyscan *s,uint8_t rows[11]){if(s->sequence==s->consumed)return FM1_NES_BUSY;s->consumed=s->sequence;memset(rows,0x3f,11);return 0;}
+int fm1_wl82_keyscan_async_raw(fm1_wl82_keyscan *s,uint8_t rows[11]){if(ms>=70)return FM1_NES_IO_ERROR;if(s->sequence==s->consumed)return FM1_NES_BUSY;s->consumed=s->sequence;memset(rows,0x3f,11);return 0;}
 void fm1_wl82_keyscan_stop(fm1_wl82_keyscan *s){s->running=0;key_stopped++;}
 uint32_t fm1_volume_test_read(uint32_t a){if(a==0x13100)return adc|0x80;if(a==0x13104)return 256;return 0;}
 void fm1_volume_test_write(uint32_t a,uint32_t v){if(a==0x13100)adc=v&~0xc0u;}
@@ -56,7 +61,7 @@ void os_time_dly(int n){
         if(ms==46){command("MDX ABORT");CHECK(!upload.active);command("MDX DEMO");}
         if(ms==55)encoders.count[0]++;
         if(ms==65){CHECK(player.selected==1);command("MDX INPUT");CHECK(strstr(answer,"enc=1,0,0,0,0,0,0"));}
-        if(ms==80){CHECK(control.running && !player.error);CHECK(mdx_volume.valid);fm1_peripheral_session_cancel();CHECK(control.running);}
+        if(ms==80){CHECK(control.running && !player.error);CHECK(mdx_volume.valid && mdx_volume.running && mdx_volume.target==32);CHECK(key_error==FM1_NES_IO_ERROR && !scan_enabled);command("MDX VOLUME");CHECK(strstr(answer,"target=32") && strstr(answer,"running=1"));fm1_peripheral_session_cancel();CHECK(control.running);}
         if(ms==100)fm1_peripheral_cancel();
         CHECK(ms<200);
     }
@@ -115,7 +120,25 @@ static void audio_boundary_tests(void) {
     rd=wr=underruns=frames=callback_ms=callback_gap_ms=late_callbacks=rebuffer_events=rebuffer_frames=render_max_ms=0;
     callback_seen=0;queue_min=2048;ms=0;memset(&mdx_volume,0,sizeof(mdx_volume));
 }
-int main(void){panel_tests();audio_boundary_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
+static void row_address_tests(void) {
+    unsigned y;screen_frame=0;
+    for(y=0;y<240;y++){CHECK(!ui_row(y));CHECK(lcd_y==y);}
+    CHECK(lcd_first && lcd_last);
+}
+static void ui_timing_tests(void) {
+    unsigned i,held_level;control.running=1;ui_title_dirty=1;
+    CHECK(!fm1_mdx_load(&player,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size));
+    player.sequence.tracks[0].opm_volume=0;fm1_mdx_song_write(&player,8,0x78);
+    ui_update(50);CHECK(ui.parts[0]==245 && ui.hold[0]==245);
+    ui_update(400);CHECK(ui.parts[0]>80 && ui.parts[0]<200 && ui.hold[0]==245);held_level=ui.parts[0];
+    fm1_mdx_song_write(&player,8,0);ui_update(400);CHECK(ui.parts[0]<held_level/2 && ui.hold[0]==245);
+    fm1_mdx_song_write(&player,8,0x78);fm1_mdx_song_write(&player,8,0);
+    ui_update(50);CHECK(ui.parts[0]==245 && ui.hold[0]==245); /* Short event is latched. */
+    silence();ui_update(50);
+    for(i=0;i<16;i++)CHECK(!ui.parts[i] && !ui.hold[i] && !part_motion[i].level_milli);
+    for(i=0;i<32;i++)CHECK(!ui.spectrum[i] && !ui.spectrum_hold[i] && !spectrum_motion[i].level_milli);
+}
+int main(void){row_address_tests();panel_tests();audio_boundary_tests();ui_timing_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
     CHECK(opened==1 && closed==1 && key_stopped==1 && lcd_stopped==1 && timer_deleted==1);
     CHECK(!audio_enabled && !scan_enabled && !alink && !keyirq && control.quiescent && !control.running);
     CHECK(fm1_peripheral_idle());puts("PASS MDX task, stereo DMA, controls, stop/upload exclusion, disconnect continuity, complete UBOOT teardown");return 0;

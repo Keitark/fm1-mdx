@@ -11,24 +11,32 @@ from usb_diag_client import exchange,IDENTITY
 LIMIT=192*1024
 HELLO='FM1DIAG/1 MDX-KARAOKE/1 RAM-UPLOAD UBOOT=SERIAL COMMIT=BLOCKED'
 
-def screenshot_png(data):
-    if len(data)!=14400:raise ValueError('Screenshot must contain240x240 packed2-bit pixels')
-    if any((b>>shift)&3==3 for b in data for shift in (6,4,2,0)):
+# Exact RGB565 renderer palette; expand with bit replication to PNG RGB.
+SCREEN_PALETTE=[(4,4,16),(10,10,30),(55,55,100),(20,20,45),(30,30,70),
+                (210,210,235),(150,150,180),(210,210,245),(245,245,255),
+                (45,30,110),(70,70,140),(110,110,180),(150,150,210),
+                (82,82,173),(150,170,230),(235,175,80)]
+def screenshot_png(data,bits=2):
+    if bits not in (2,4) or len(data)!=240*240*bits//8:raise ValueError('Unexpected screenshot size/depth')
+    if bits==2 and any((b>>shift)&3==3 for b in data for shift in (6,4,2,0)):
         raise ValueError('Screenshot palette index rejected')
     def chunk(kind,payload):
         return struct.pack('>I',len(payload))+kind+payload+struct.pack('>I',zlib.crc32(kind+payload))
-    rows=b''.join(b'\0'+data[y*60:(y+1)*60] for y in range(240))
-    return (b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',240,240,2,3,0,0,0))+
-            chunk(b'PLTE',bytes([8,8,8,0,255,255,255,255,0]))+
-            chunk(b'IDAT',zlib.compress(rows,9))+chunk(b'IEND',b''))
+    width=240*bits//8;rows=b''.join(b'\0'+data[y*width:(y+1)*width] for y in range(240))
+    colors=bytes([8,8,8,0,255,255,255,255,0])
+    if bits==4:
+        colors=bytes(c for rgb in SCREEN_PALETTE for c in (((rgb[0]>>3)<<3)|((rgb[0]>>3)>>2),
+                     ((rgb[1]>>2)<<2)|((rgb[1]>>2)>>4),((rgb[2]>>3)<<3)|((rgb[2]>>3)>>2)))
+    return (b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',240,240,bits,3,0,0,0))+
+            chunk(b'PLTE',colors)+chunk(b'IDAT',zlib.compress(rows,9))+chunk(b'IEND',b''))
 
 def capture_screenshot(port):
     header=exchange(port,'MDX SHOT BEGIN')
-    match=re.fullmatch(r'OK MDX SHOT ([0-9a-f]{8}) 240 240 I2 ([0-9a-f]{8}) frame=([0-9]+)',header)
+    match=re.fullmatch(r'OK MDX SHOT ([0-9a-f]{8}) 240 240 I([24]) ([0-9a-f]{8}) frame=([0-9]+)',header)
     if not match:raise RuntimeError('Unexpected screenshot format')
-    token,crc,frame=match.groups();data=bytearray()
+    token,bits,crc,frame=match.groups();bits=int(bits);data=bytearray()
     try:
-        for offset in range(0,14400,96):
+        for offset in range(0,240*240*bits//8,96):
             answer=exchange(port,f'MDX SHOT READ {token} {offset:08x}')
             prefix=f'MDX SHOT DATA {token} {offset:08x} '
             if not answer.startswith(prefix) or len(answer)!=len(prefix)+192:
@@ -37,7 +45,7 @@ def capture_screenshot(port):
             if not re.fullmatch(r'[0-9a-f]{192}',encoded):raise RuntimeError('Malformed screenshot pixels')
             data.extend(bytes.fromhex(encoded))
         if zlib.crc32(data)!=int(crc,16):raise RuntimeError('Screenshot CRC mismatch; image not written')
-        png=screenshot_png(data)
+        png=screenshot_png(data,bits)
     except BaseException:
         try:exchange(port,f'MDX SHOT END {token}')
         except Exception:pass
@@ -73,8 +81,8 @@ def wait_stopped(port):
 
 def control_reply(port,command):
     action=command.split()[1]
-    prefix={'STATUS':'MDX running=','AUDIO':'MDX AUDIO ',
-            'TIMING':'MDX TIMING ','INPUT':'MDX INPUT '}.get(action,'OK MDX QUEUED')
+    prefix={'STATUS':'MDX running=','AUDIO':'MDX AUDIO ','USB':'MDX USB ',
+            'TIMING':'MDX TIMING ','DISPLAY':'MDX DISPLAY ','VOLUME':'MDX VOLUME ','SCAN':'MDX SCAN ','INPUT':'MDX INPUT '}.get(action,'OK MDX QUEUED')
     return exchange(port,command,expected_prefix=prefix)
 
 def send(port,data):
@@ -96,7 +104,7 @@ def send(port,data):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action',choices=('list','upload','screenshot','status','input','audio','timing','play','stop','demo','select','mute','note'))
+    p.add_argument('action',choices=('list','upload','screenshot','status','input','audio','usb','timing','display','volume','scan','play','stop','demo','select','mute','note'))
     p.add_argument('--port');p.add_argument('--mdx',type=Path);p.add_argument('--pdx',type=Path)
     p.add_argument('--output',type=Path,help='PNG path for screenshot (default: timestamped current-directory file)')
     p.add_argument('--track',type=int,help='1..8 for select;1..16 for mute')

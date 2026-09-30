@@ -144,8 +144,11 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
     base=value('ota_status')
     layout=tuple(value(n)-base for n in ('lrc.0','lrc.6','sys_low_power'))
     if usb_audio:
-        # Reviewed original composite and composite-with-screenshot layouts.
-        require(layout in ((224,236,260),(228,240,264),(260,272,296)),
+        # Reviewed composite layouts, including Pocket UI: ota_status0x1c4e7d0,
+        # lrc.0 at0x1c4e8ec, lrc.6 at0x1c4e8f8, sys_low_power0x1c4e910.
+        # Note-meter link ota_status0x1c4e2d0: reviewed stores0x20012d4
+        # b[++r1=232],0x2001302 [r8+244],0x20015be [r8+268].
+        require(layout in ((224,236,260),(228,240,264),(232,244,268),(260,272,296),(284,296,320)),
                 'Composite audio power merged-global layout changed')
     for off,target,prefix,regbits,historical in (
         (0x0d6,'lrc.0',b'\x5a\xee',0x10,bytes.fromhex('5a ee 14 04')),
@@ -170,10 +173,12 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
             # bypass for arbitrary power instructions.
             require(value('lrc.1')==value('lrc.0')+4 and value('lrc.2')==value('lrc.0')+8,
                     'Power LRC state layout changed')
-            if usb_audio and layout==(260,272,296):
+            if usb_audio and layout in ((260,272,296),(284,296,320)):
                 # The former mov+preincrement-store (6 bytes) is replaced by
                 # add-immediate+store (6 bytes), with identical destination.
-                require(code_at(start+0x0d4,6)==bytes.fromhex('01 e1 04 81 98 40'),
+                # Pocket link: power_init+0xd4 r1=r8+284, then byte store.
+                expected_lrc='01 e1 1c 81 98 40' if layout==(284,296,320) else '01 e1 04 81 98 40'
+                require(code_at(start+0x0d4,6)==bytes.fromhex(expected_lrc),
                         'Power merged-global target changed: lrc.0')
                 normalized[0x0d4:0x0da]=bytes.fromhex('81 16 5a ee 14 04')
                 continue

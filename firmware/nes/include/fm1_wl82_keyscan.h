@@ -1,6 +1,9 @@
 #ifndef FM1_WL82_KEYSCAN_H
 #define FM1_WL82_KEYSCAN_H
 #include "fm1_stock_keys.h"
+#ifndef FM1_KEYSCAN_CLOCK_QUANTUM_US
+#define FM1_KEYSCAN_CLOCK_QUANTUM_US 0u
+#endif
 
 /* Physical SPI2 scanner for the stock-derived FM-1_010 pin assignment.
    start/poll/stop perform MMIO; construction/zero initialization does not.
@@ -57,7 +60,8 @@ void fm1_wl82_keyscan_stop(fm1_wl82_keyscan *);
    IRQ masking. Install IRQ_SPI2 before start; mask/unregister before teardown.
    step handles ONE completion, never waits/decodes/logs/reads a clock.
    raw copies a newly completed sweep, or BUSY without altering rows. It checks
-   lack of IRQ progress for >=10ms since its last task observation, not exact
+   lack of IRQ progress for >=10ms plus one supplied clock quantum since its
+   last task observation, not exact
    transfer duration. Call regularly; stop/reset/recovery are task-only. */
 int fm1_wl82_keyscan_async_start(fm1_wl82_keyscan *,void *,uint32_t (*)(void *));
 void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *);

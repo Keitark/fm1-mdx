@@ -380,3 +380,71 @@ The current UAC target ignores `usb_g_iso_write` results; `tx_packets` counts
 encoder attempts before submission, and `bad_packets` concerns USB OUT input.
 Consequently, the existing status does not certify successful or correctly
 aligned USB IN transfers. Device listening acceptance remains open.
+
+
+## 2026-09-30 Pocket-style UI candidate (issue12)
+
+The UI adds real256-point stereo FFT analysis, FM8/PCM8 sample-peak meters,
+20Hz requested dirty-row refresh, and completed-frame FPS telemetry. All8 CTests,
+7 client checks,4 screenshot checks and the descriptor test pass. The integrated
+replay checks each committed screen against its modeled LCD pixel RAM.
+
+Private Super Laydock at+500ppm over180 simulated seconds completes3598 views
+(19.99FPS),83094 row writes and780426 skips, with no missing synth samples,
+rebuffers or modeled USB FIFO errors. The wire-cost model assumes400us per row;
+PI32 CPU/render costs and real USB/DMA timing remain outside the model. The
+10-second demo WAV is byte-identical before/after the sample meter taps.
+
+The composite PI32 link and5 linked corruption regressions pass with the
+reviewed startup/power relocations. Source-only display work remains separate
+from the installed image; no UI firmware flash or hardware FPS acceptance has
+occurred. See[DISPLAY.md](DISPLAY.md) for definitions and bench requirements.
+
+
+### UI flash bench failure and correction
+
+User-approved UI image00032c4e9fc259e400808023161ebb9b8f7e0eeb8304ec7864ee128b47ce649f
+was flashed in47 directory-last sectors. Its complete1MiB readback matches.
+The reset was sent once; the CLI logger hit its known UTF-8 decoding error.
+CDC boot/audio progress is observed, but the protected observation fails on
+`keys=-3`; the original session failure latch is retained. The user performed
+a cold power cycle and the same scanner error/internal-audio mute persists.
+Bench display telemetry is6.7-6.8FPS, maximum frame270ms; audio reports zero
+underruns, no rebuffers and a10ms maximum coarse-clock callback gap.
+
+The follow-up separates ADC volume sampling from scanner failure, adjusts the
+watchdog for the actual10ms clock quantum and reduces per-row formatting/work.
+All9 CTests,7 client checks,4 screenshot checks and the descriptor test pass,
+including the real scanner driver at the quantized-clock boundary and an injected
+scanner fault that must leave ADC volume sampling operational. The optimized
+Super Laydock preview is byte-identical in indexed pixels. The correction links
+with the pinned SDK and passes5 linked corruption regressions. It is not flashed
+or hardware accepted yet; its exact candidate and rollback need approval.
+
+
+### 2026-10-01 correction bench and zero-based LCD rows
+
+Image0284ee8 (2b38d55bebba6a8ab8076d214d5d26da1fc9f9e125b791ec10a01255c6f53832)
+was fully readback-verified and boot-observed. Live demo diagnostics show20FPS,
+keys=0, valid/progressing volume ADC, zero reported synth underruns/rebuffering,
+and no peripheral errors. The user confirms internal speaker output. USB
+transport diagnostics now count actual SDK submissions, short returns and busy
+endpoints; these counters still cannot certify received Windows PCM alignment.
+A Laydock transfer timed out, then a paced retry succeeded while capture was
+inactive. Concurrent capture/CDC failures remain unresolved under issue9.
+
+The MDX row writer had reintroduced y+40 despite the already qualified NES
+zero-based path. Commit4cc306d corrects it to y. Host regressions assert all240
+physical RASET addresses and compare each committed LCD image without offset
+compensation in the mock. All9 CTests,7 client checks,4 screenshot checks, the
+descriptor check and5 linked corruption checks pass; the board link passes.
+
+Imageca04b4e9bef7caecc60d15e182fc997994f8f7fc794fd54f83ffe43ecc4e1cc2
+was installed in44 directory-last sectors and its full1MiB readback matches.
+Reset was sent once; successful CDC boot observation resolved the logger error.
+Frames advanced708672 to1149760 with zero reported underruns/peripheral errors.
+The user explicitly confirms correct screen positioning at the top and bottom.
+The50ms requested view interval is unchanged. Both prior images are preserved
+privately for rollback. Physical screen offset is accepted; meter movement,
+Laydock reload and USB audio reliability are separate acceptance items. Reload
+at120-byte/20ms and48-byte/50ms pacing timed out with capture active.

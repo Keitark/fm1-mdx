@@ -13,6 +13,7 @@
 static fm1_uac_bridge bridge;
 static spinlock_t lock;
 static unsigned armed;
+static struct {uint32_t busy,submitted,short_write,starts,stops,last_csr,last_write;} transport;
 #ifdef _MSC_VER
 static __declspec(align(64)) u8 fm1_uac_dma[2][256];
 #else
@@ -26,21 +27,34 @@ static void rx(struct usb_device_t *d,u32 ep) {
     f=take();if(armed)fm1_uac_receive(&bridge,fm1_uac_dma[0],n);release(f);
 }
 static void tx(struct usb_device_t *d,u32 ep) {
-    unsigned f,n;const usb_dev id=usb_device2id(d);(void)ep;
+    unsigned f,n,csr,result;const usb_dev id=usb_device2id(d);(void)ep;
+    /* The SDK writer can poll TxPktRdy for seconds. Never enter that wait
+       from a USB IRQ, or overwrite a buffer the controller still owns. */
+    csr=usb_read_txcsr(id,1);
+    f=take();transport.last_csr=csr;
+    if(csr&TXCSRP_TxPktRdy){transport.busy++;release(f);return;}
+    release(f);
     f=take();n=armed?fm1_uac_transmit(&bridge,fm1_uac_dma[1],192):0;release(f);
-    if(n)usb_g_iso_write(id,1,NULL,n);
+    if(n){result=usb_g_iso_write(id,1,NULL,n);f=take();transport.last_write=result;
+        if(result==n)transport.submitted++;else transport.short_write++;release(f);}
 }
 static void stream(struct usb_device_t *d,unsigned direction,int on) {
-    unsigned f=take();const usb_dev id=usb_device2id(d);
+    unsigned f;const usb_dev id=usb_device2id(d);
+    /* Remove the completion callback before resetting its FIFO/DMA state. */
+    if(direction){usb_clr_intr_txe(id,1);usb_g_set_intr_hander(id,0x81,NULL);
+        usb_write_txcsr(id,1,TXCSRP_FlushFIFO|TXCSRP_ClrDataTog|TXCSRP_ISOCHRONOUS);}
+    else {usb_clr_intr_rxe(id,1);usb_g_set_intr_hander(id,1,NULL);
+        usb_write_rxcsr(id,1,RXCSRP_FlushFIFO|RXCSRP_ClrDataTog|RXCSRP_ISOCHRONOUS);}
+    f=take();
     if(!armed)on=0;
+    if(direction){if(on)transport.starts++;else transport.stops++;}
     fm1_uac_stream(&bridge,direction,on);release(f);
-    if(direction){usb_clr_intr_txe(id,1);usb_g_set_intr_hander(id,0x81,NULL);}
-    else {usb_clr_intr_rxe(id,1);usb_g_set_intr_hander(id,1,NULL);}
     if(on) {
         if(direction)usb_enable_ep(id,1);
         usb_g_set_intr_hander(id,direction?0x81:1,direction?tx:rx);
-        usb_g_ep_config(id,direction?0x81:1,USB_ENDPOINT_XFER_ISOC,1,fm1_uac_dma[direction],192);
+        usb_g_ep_config(id,direction?0x81:1,USB_ENDPOINT_XFER_ISOC,0,fm1_uac_dma[direction],192);
         if(direction)tx(d,1);
+        if(direction)usb_set_intr_txe(id,1);else usb_set_intr_rxe(id,1);
     }
 }
 static void reset(struct usb_device_t *d,u32 itf){(void)itf;stream(d,0,0);stream(d,1,0);}
@@ -78,4 +92,12 @@ void fm1_usb_audio_status(char *out,size_t n) {
     release(f); /* Formatting must not extend the IRQ-disabled DMA critical section. */
     snprintf(out,n,"MDX AUDIO rate=48000 bits=16 channels=2 out=%u in=%u rx=%u tx=%u bad=%u play_fill=%u capture_fill=%u under=%u,%u over=%u,%u\n",
         values[0],values[1],values[2],values[3],values[4],values[5],values[6],values[7],values[8],values[9],values[10]);
+}
+void fm1_usb_audio_transport_status(char *out,size_t n) {
+    uint32_t busy,submitted,short_write,starts,stops,csr,written;unsigned f=take();
+    busy=transport.busy;submitted=transport.submitted;short_write=transport.short_write;
+    starts=transport.starts;stops=transport.stops;csr=transport.last_csr;written=transport.last_write;release(f);
+    snprintf(out,n,"MDX USB submitted=%lu short=%lu busy=%lu starts=%lu stops=%lu csr=%04lx written=%lu\n",
+        (unsigned long)submitted,(unsigned long)short_write,(unsigned long)busy,(unsigned long)starts,
+        (unsigned long)stops,(unsigned long)csr,(unsigned long)written);
 }
