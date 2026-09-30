@@ -185,11 +185,6 @@ retrofm_pcm_result retrofm_pcm_next_frame(retrofm_pcm_mixer *mixer,
         retrofm_pcm_result result = voice_sample(voice, &decoded);
         if (result == RETROFM_PCM_DECODE_ERROR) return result;
         scaled = ((int64_t)decoded * voice->gain_q11) >> 10U;
-        if (voice->pan) {
-            uint32_t peak=(uint32_t)(scaled<0?-scaled:scaled);
-            if(peak>32768)peak=32768;
-            if(peak>mixer->peaks[channel])mixer->peaks[channel]=(uint16_t)peak;
-        }
         if ((voice->pan & 1U) != 0U) mix_left += scaled;
         if ((voice->pan & 2U) != 0U) mix_right += scaled;
     }

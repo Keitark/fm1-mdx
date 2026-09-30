@@ -146,7 +146,9 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
     if usb_audio:
         # Reviewed composite layouts, including Pocket UI: ota_status0x1c4e7d0,
         # lrc.0 at0x1c4e8ec, lrc.6 at0x1c4e8f8, sys_low_power0x1c4e910.
-        require(layout in ((224,236,260),(228,240,264),(260,272,296),(284,296,320)),
+        # Note-meter link ota_status0x1c4e2d0: reviewed stores0x20012d4
+        # b[++r1=232],0x2001302 [r8+244],0x20015be [r8+268].
+        require(layout in ((224,236,260),(228,240,264),(232,244,268),(260,272,296),(284,296,320)),
                 'Composite audio power merged-global layout changed')
     for off,target,prefix,regbits,historical in (
         (0x0d6,'lrc.0',b'\x5a\xee',0x10,bytes.fromhex('5a ee 14 04')),

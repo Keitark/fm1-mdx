@@ -28,6 +28,7 @@
 extern const unsigned char fm1_demo_mdx[],fm1_demo_pdx[];
 extern const size_t fm1_demo_mdx_size,fm1_demo_pdx_size;
 static fm1_mdx_player player;
+static unsigned ui_title_dirty=1;
 static fm1_mdx_upload upload;
 static fm1_wl82_keyscan scanner;
 static fm1_volume mdx_volume;
@@ -228,6 +229,7 @@ static void action(unsigned op,unsigned a,unsigned b) {
     int rc=0;
     if(op==FM1_MDX_STOP){silence();return;}
     if(op==FM1_MDX_DEMO || op==FM1_MDX_PLAY) {
+        ui_title_dirty=1;
         unsigned f=take(&audio_lock);rd=wr=0;primed=0;audio_playing=1;release(&audio_lock,f);
         if(op==FM1_MDX_PLAY) {
             uploaded_song=1;
@@ -245,36 +247,42 @@ static void action(unsigned op,unsigned a,unsigned b) {
 }
 /* Bounded dirty-row batches. The same frozen state renders LCD and SHOT. */
 static fm1_screen_view ui;
-static fm1_meter_motion spectrum_motion[24],part_motion[16],stereo_motion[2];
+static fm1_note_motion spectrum_motion[32];
+static fm1_part_motion part_motion[16];
+static uint32_t ui_elapsed_ms;
 static void ui_update(uint32_t elapsed_ms) {
-    uint8_t spectrum[24]={0};
-    unsigned i;fm1_screen_title(&ui,player.mdx.title.data,player.mdx.title.size);
+    uint8_t volume[16],onset[16];uint16_t held,triggers;
+    unsigned i;
+    if(ui_title_dirty){fm1_screen_title(&ui,player.mdx.title.data,player.mdx.title.size);ui_title_dirty=0;ui_elapsed_ms=0;memset(spectrum_motion,0,sizeof(spectrum_motion));memset(part_motion,0,sizeof(part_motion));}
+    ui_elapsed_ms+=elapsed_ms;
+    {unsigned width=(unsigned)strlen(ui.credit)*6,overflow=width>224?width-224:0;
+     if(overflow){unsigned phase=(ui_elapsed_ms/100)%(2*overflow+40);
+        ui.credit_scroll=(uint16_t)(phase<20?0:phase<20+overflow?phase-20:phase<40+overflow?overflow:2*overflow+40-phase);
+     }else ui.credit_scroll=0;}
     ui.running=(uint8_t)control.running;ui.selected=player.selected;ui.mutes=player.mute_mask;
     ui.tracks=player.mdx.track_count;ui.uploaded=(uint8_t)uploaded_song;ui.octave=(int8_t)keyboard_octave;
     ui.seconds=(uint32_t)(player.cycles/RETROFM_PL_CLOCK_HZ);
-    fm1_meters_spectrum(&player.meters,spectrum);
-    /* MMDSP-style fast attack and short falling tails. Units span60dB:
-       FFT32dB/s, parts60dB/s, stereo40dB/s. Peak caps hold400ms,
-       then fall20dB/s. Only the owner task updates these42 envelopes. */
-    for(i=0;i<24;i++) {
-        fm1_meter_step(&spectrum_motion[i],spectrum[i],elapsed_ms,136,0,136);
+    /* Event spectrum with independently held/falling maximum lines. No FFT
+       or per-sample part tap. The task advances all envelopes by elapsed time. */
+    for(i=0;i<32;i++) {
+        fm1_note_step(&spectrum_motion[i],player.meters.note_energy[i],elapsed_ms);
+        player.meters.note_energy[i]=0;
         ui.spectrum[i]=(uint8_t)(spectrum_motion[i].level_milli/1000);
+        ui.spectrum_hold[i]=(uint8_t)(spectrum_motion[i].peak_milli/1000);
     }
+    triggers=fm1_mdx_part_activity(&player,volume,onset,&held);
     for(i=0;i<16;i++) {
-        unsigned value=fm1_meters_level(player.meters.parts[i]);player.meters.parts[i]=0;
-        fm1_meter_step(&part_motion[i],(uint8_t)value,elapsed_ms,255,400,85);
+        fm1_part_step(&part_motion[i],(triggers>>i)&1,onset[i],volume[i],(held>>i)&1,elapsed_ms);
         ui.parts[i]=(uint8_t)(part_motion[i].level_milli/1000);
-        ui.hold[i]=(uint8_t)(part_motion[i].peak_milli/1000);
+        ui.hold[i]=volume[i];
     }
-    for(i=0;i<2;i++) {
-        fm1_meter_step(&stereo_motion[i],fm1_meters_level(player.meters.stereo[i]),elapsed_ms,170,0,170);
-        ui.stereo[i]=(uint8_t)(stereo_motion[i].level_milli/1000);player.meters.stereo[i]=0;
-    }
+    memset(player.meters.stereo,0,sizeof(player.meters.stereo));
     if(!control.running) {
         memset(ui.spectrum,0,sizeof(ui.spectrum));memset(ui.parts,0,sizeof(ui.parts));
+        memset(ui.spectrum_hold,0,sizeof(ui.spectrum_hold));
         memset(ui.hold,0,sizeof(ui.hold));memset(ui.stereo,0,sizeof(ui.stereo));
         memset(spectrum_motion,0,sizeof(spectrum_motion));memset(part_motion,0,sizeof(part_motion));
-        memset(stereo_motion,0,sizeof(stereo_motion));memset(&player.meters,0,sizeof(player.meters));
+        memset(&player.meters,0,sizeof(player.meters));
     }
 }
 static int ui_row(unsigned y) {
@@ -341,7 +349,7 @@ static void fm1_peripheral_task(void *u) {
         } else if(scan_rc!=FM1_NES_BUSY && scan_enabled) {
             key_error=scan_rc;f=take(&input_lock);scan_enabled=0;fm1_wl82_keyscan_stop(&scanner);release(&input_lock,f);
             /* Lost key releases must never leave a manual voice held. */
-            for(a=0;a<8;a++)if(player.live_note[a]>=0){fm1_mdx_song_write(&player,8,(uint8_t)a);ym2151_write_reg(&player.opm,8,(int)a);player.live_note[a]=-1;}
+            for(a=0;a<8;a++)if(player.live_note[a]>=0){fm1_mdx_song_write(&player,8,(uint8_t)a);ym2151_write_reg(&player.opm,8,(int)a);player.meter_keys[a]=0;player.live_note[a]=-1;}
         }
         if((uint32_t)(now-last_status)>=250){last_status=now;publish();}
         /* Rendering changes occupancy; use the live reserve for UI/sleep. */

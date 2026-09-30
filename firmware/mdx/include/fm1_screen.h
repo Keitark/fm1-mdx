@@ -5,8 +5,9 @@
 #define FM1_SCREEN_CHUNK 96u
 /* Compact frozen state, not a115KiB framebuffer. */
 typedef struct {
-    char title[33],subtitle[39];
-    uint8_t spectrum[24],parts[16],hold[16],stereo[2];
+    char title[33],subtitle[39],credit[128];
+    uint8_t spectrum[32],spectrum_hold[32],parts[16],hold[16],stereo[2];
+    uint16_t credit_scroll;
     uint16_t mutes;
     uint8_t selected,running,tracks,uploaded;
     int8_t octave;

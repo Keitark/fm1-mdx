@@ -217,6 +217,9 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
             # Pocket UI link: ota_status0x1c4e7d0 +404 = trace0x1c4e964;
             # reviewed wrapper store0x2002774 d1 ec 07 19. Same46-byte body.
             if usb_audio:encodings.update({404:'d1 ec 07 19'})
+            # Note-meter link: ota_status0x1c4e2d0 +412 = trace0x1c4e46c;
+            # reviewed wrapper store0x200276c d1 ec 0f 19. Body unchanged.
+            if usb_audio:encodings.update({412:'d1 ec 0f 19'})
             require(delta in encodings,'USB trace merged-global offset changed: '+str(delta))
             struct.pack_into('<I',expected_wrapper,4,value('ota_status'))
             expected_wrapper[14:16]=bytes.fromhex(encodings[delta])

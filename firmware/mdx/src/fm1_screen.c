@@ -29,6 +29,10 @@ static unsigned glyph(char c,unsigned col) {
     case '.':return col==2?64:0;case ':':return col==2?36:0;
     case '/':return 32>>col;case '[':return col==1?127:col>1?65:0;
     case ']':return col==3?127:col<3?65:0;case '>':return col==1?65:col==2?34:col==3?20:0;
+    case '(':return col==1?28:col==2?34:col==3?65:0;
+    case ')':return col==1?65:col==2?34:col==3?28:0;
+    case '&':{static const uint8_t g[5]={54,73,85,34,80};return g[col];}
+    case '?':{static const uint8_t g[5]={2,1,81,9,6};return g[col];}
     default:return 0;}
 }
 static void rect(uint8_t *r,unsigned y,int x,int top,int w,int h,unsigned color) {
@@ -41,46 +45,76 @@ static void text(uint8_t *r,unsigned y,int x,int top,const char *s,unsigned scal
     for(i=0;s[i]&&x+(int)(i*6*scale)<240;i++)for(k=0;k<5;k++)if(glyph(s[i],k)&(1u<<row))
         for(pos=0;pos<(int)scale;pos++){int at=x+(int)((i*6+k)*scale)+pos;if(at>=0&&at<240)r[at]=(uint8_t)color;}
 }
-void fm1_screen_title(fm1_screen_view *v,const uint8_t *data,size_t n) {
-    size_t i,j=0;unsigned bracket=0;memset(v->title,0,sizeof(v->title));memset(v->subtitle,0,sizeof(v->subtitle));
-    for(i=0;i<n;i++) {
-        unsigned c=data[i];if(c=='['){bracket=1;j=0;continue;}if(bracket&&c==']')break;
-        if(c<32||c>126)c=' ';if(c==' '&&!j)continue;
-        if(!bracket){if(j<32)v->title[j++]=(char)c;}else if(j<38)v->subtitle[j++]=(char)c;
+enum {PLOT_HEIGHT=49,PLOT_STEPS=28,SPECTRUM_TOP=79,PART_TOP=164};
+static unsigned steps(uint8_t level){return (level*PLOT_STEPS+254u)/255u;}
+static unsigned plot_color(uint8_t level,uint8_t cap,unsigned d,unsigned muted) {
+    unsigned amount=steps(level),marker=steps(cap),height=(marker*PLOT_HEIGHT+PLOT_STEPS-1)/PLOT_STEPS;
+    unsigned unit=d*PLOT_STEPS/PLOT_HEIGHT,color=3;
+    if(unit<amount)color=muted?15:unit<9?(d&1?9:10):unit<19?(d&1?10:11):(d&1?11:14);
+    if(height && d==height-1)color=muted?15:8;
+    return color;
+}
+static void label_copy(char *out,size_t capacity,const char *start,size_t n) {
+    while(n && *start==' '){start++;n--;}
+    while(n && (start[n-1]==' ' || start[n-1]=='/' || start[n-1]=='-'))n--;
+    if(n>=capacity)n=capacity-1;memcpy(out,start,n);out[n]=0;
+}
+static char lower(char c){return c>='A'&&c<='Z'?c+32:c;}
+static const char *credit_start(const char *s) {
+    static const char *tokens[]={"reprogrammed by","programmed by","arranged by","composed by","ar.by","by ","by:"};
+    size_t i,k,j;
+    for(i=0;s[i];i++) {
+        if(i && s[i-1]!=' ' && s[i-1]!='/')continue;
+        for(k=0;k<sizeof(tokens)/sizeof(tokens[0]);k++) {
+            for(j=0;tokens[k][j] && s[i+j] && lower(s[i+j])==tokens[k][j];j++);
+            if(!tokens[k][j])return s+i;
+        }
     }
-    for(i=strlen(v->title);i&&v->title[i-1]==' ';i--)v->title[i-1]=0;
-    for(i=strlen(v->subtitle);i&&v->subtitle[i-1]==' ';i--)v->subtitle[i-1]=0;
+    return 0;
+}
+void fm1_screen_title(fm1_screen_view *v,const uint8_t *data,size_t n) {
+    char clean[256];size_t i;const char *bracket,*end,*credit;
+    if(n>sizeof(clean)-1)n=sizeof(clean)-1;
+    for(i=0;i<n;i++)clean[i]=data[i]>=32 && data[i]<=126?(char)data[i]:data[i]>=128?'?':' ';
+    clean[n]=0;bracket=strchr(clean,'[');end=bracket?strchr(bracket+1,']'):0;
+    memset(v->title,0,sizeof(v->title));memset(v->subtitle,0,sizeof(v->subtitle));
+    memset(v->credit,0,sizeof(v->credit));v->credit_scroll=0;
+    credit=credit_start(end?end+1:clean);
+    label_copy(v->title,sizeof(v->title),clean,(size_t)((bracket?bracket:credit?credit:clean+n)-clean));
+    if(bracket)label_copy(v->subtitle,sizeof(v->subtitle),bracket+1,(size_t)((end?end:clean+n)-(bracket+1)));
+    if(!credit && end)credit=end+1;
+    if(credit)label_copy(v->credit,sizeof(v->credit),credit,strlen(credit));
     if(!v->title[0])strcpy(v->title,"MDX PLAYER");
+    if(!v->credit[0])strcpy(v->credit,"NO EMBEDDED CREDIT");
 }
 void fm1_screen_indices(const fm1_screen_view *v,unsigned y,uint8_t r[240]) {
     static const char names[16][3]={"F1","F2","F3","F4","F5","F6","F7","F8","P1","P2","P3","P4","P5","P6","P7","P8"};
-    char s[40];unsigned i,seg;
+    char s[40];unsigned i;
     memset(r,0,240);if(y>=240)return;
     rect(r,y,0,0,240,21,1);rect(r,y,0,20,240,1,2);
-    text(r,y,8,5,"FM1",2,8);text(r,y,49,9,"MDX",1,6);
+    text(r,y,8,5,"FM1",2,8);
+    if(y>=9 && y<16){snprintf(s,sizeof(s),"OCT%+d",v->octave);text(r,y,49,9,s,1,6);}
     if(y>=8 && y<15){snprintf(s,sizeof(s),"%02lu:%02lu",(unsigned long)(v->seconds/60),(unsigned long)(v->seconds%60));text(r,y,125,8,s,1,5);}
     text(r,y,188,8,v->running?"PLAY >":"STOP",1,v->running?14:6);
     /* Song labels stay inside the card at native LCD resolution. */
-    rect(r,y,4,25,232,32,1);text(r,y,8,28,v->title,1,8);text(r,y,8,43,v->subtitle[0]?v->subtitle:(v->uploaded?"USB SONG / RAM":"FLASH DEMO"),1,6);
-    text(r,y,8,64,"STEREO FFT",1,6);text(r,y,164,64,"44.1 KHZ",1,6);
-    if(y>=76 && y<111)for(i=0;i<24;i++) {
-        int height=(v->spectrum[i]*35+254)/255;
-        rect(r,y,8+(int)i*9,76,7,35,3);
-        for(seg=0;seg<12;seg++)if((int)seg*3<height)rect(r,y,8+(int)i*9,109-(int)seg*3,7,2,seg<4?10:seg<8?11:14);
+    rect(r,y,4,25,232,36,1);text(r,y,8,28,v->title,1,8);text(r,y,8,40,v->subtitle[0]?v->subtitle:(v->uploaded?"USB SONG / RAM":"FLASH DEMO"),1,6);
+    if(y>=52 && y<59){text(r,y,8-(int)v->credit_scroll,52,v->credit,1,14);rect(r,y,0,52,8,7,1);rect(r,y,232,52,8,7,1);}
+    text(r,y,8,64,"NOTE SPECTRUM",1,6);text(r,y,188,64,"MAX",1,6);
+    if(y>=SPECTRUM_TOP && y<SPECTRUM_TOP+PLOT_HEIGHT)for(i=0;i<32;i++) {
+        unsigned d=SPECTRUM_TOP+PLOT_HEIGHT-1-y;
+        rect(r,y,9+(int)i*7,(int)y,6,1,plot_color(v->spectrum[i],v->spectrum_hold[i],d,0));
     }
-    text(r,y,8,112,"172",1,6);text(r,y,88,112,"2K",1,6);text(r,y,189,112,"22K HZ",1,6);
-    for(i=0;i<2;i++){text(r,y,8,120+(int)i*8,i?"R":"L",1,6);rect(r,y,20,121+(int)i*8,210,4,3);rect(r,y,20,121+(int)i*8,(int)v->stereo[i]*210/255,4,12);}
-    text(r,y,8,140,"FM / MDX",1,6);text(r,y,164,140,"8 PARTS",1,6);
-    text(r,y,8,181,"PCM8",1,6);text(r,y,164,181,"8 VOICES",1,6);
-    /* All16 voice peaks: FM before shared nonlinear sum; PCM after gain/pan. */
-    if((y>=149 && y<178)||(y>=190 && y<219))for(i=y<180?0:8;i<(y<180?8u:16u);i++) {
-        int top=i<8?151:192,x=8+(int)(i%8)*28;
+    text(r,y,8,130,"28",1,6);text(r,y,88,130,"220",1,6);text(r,y,183,130,"3.5K HZ",1,6);
+    text(r,y,8,143,"FM8 + PCM8",1,6);text(r,y,146,143,"VELOCITY",1,6);
+    /* MMDSP's two256x56 plots scaled uniformly to224x49, preserving28
+       logical vertical steps. All16 parts share the same baseline. */
+    if(y>=151 && y<215)for(i=0;i<16;i++) {
+        int x=8+(int)i*14;
         unsigned muted=(v->mutes>>i)&1,selected=i==v->selected;
-        rect(r,y,x-2,top-2,26,29,selected?2:1);
-        for(seg=0;seg<6;seg++){unsigned color=3;if(v->parts[i]>seg*255/6)color=muted?15:seg<2?10:seg<4?11:14;
-            rect(r,y,x+1,top+15-(int)seg*3,21,2,color);}
-        if(v->hold[i])rect(r,y,x+1,top+15-(int)((v->hold[i]-1)*6/255)*3,21,1,muted?15:8);
-        text(r,y,x+6,top+20,names[i],1,muted?15:selected?8:6);
+        rect(r,y,x,151,14,64,selected?2:1);
+        if(y>=PART_TOP && y<PART_TOP+PLOT_HEIGHT)
+            rect(r,y,x+1,(int)y,12,1,plot_color(v->parts[i],v->hold[i],PART_TOP+PLOT_HEIGHT-1-y,muted));
+        text(r,y,x+1,153,names[i],1,muted?15:selected?8:6);
     }
     if(y>=222 && y<229){snprintf(s,sizeof(s),"FM%u %s  OCT%+d",v->selected+1,(v->mutes&(1u<<v->selected))?"KARAOKE":"MDX",v->octave);text(r,y,8,222,s,1,5);}
     rect(r,y,0,233,240,7,1);text(r,y,3,233,"SELECT PART  FX MUTE  PLAY/STOP",1,6);
@@ -93,34 +127,23 @@ int fm1_screen_row_changed(const fm1_screen_view *a,const fm1_screen_view *b,uns
     /* Conservative field dependencies: a false result guarantees identical
        pixels. No second rasterization, hash collisions or framebuffer needed. */
     if(y>=240)return 0;
-    if(y>=8 && y<15)return a->seconds!=b->seconds || a->running!=b->running;
+    if(y>=8 && y<16)return a->seconds!=b->seconds || a->running!=b->running || a->octave!=b->octave;
     if(y>=28 && y<35)return memcmp(a->title,b->title,sizeof(a->title))!=0;
-    if(y>=43 && y<50)return a->uploaded!=b->uploaded || memcmp(a->subtitle,b->subtitle,sizeof(a->subtitle))!=0;
-    if(y>=76 && y<111) {
-        unsigned d=110-y,seg=d/3,i;if(d%3==2)return 0;
-        for(i=0;i<24;i++)if((seg*3<(a->spectrum[i]*35u+254)/255)!=(seg*3<(b->spectrum[i]*35u+254)/255))return 1;
+    if(y>=40 && y<47)return a->uploaded!=b->uploaded || memcmp(a->subtitle,b->subtitle,sizeof(a->subtitle))!=0;
+    if(y>=52 && y<59)return a->credit_scroll!=b->credit_scroll || memcmp(a->credit,b->credit,sizeof(a->credit))!=0;
+    if(y>=SPECTRUM_TOP && y<SPECTRUM_TOP+PLOT_HEIGHT) {
+        unsigned d=SPECTRUM_TOP+PLOT_HEIGHT-1-y,i;
+        for(i=0;i<32;i++)if(plot_color(a->spectrum[i],a->spectrum_hold[i],d,0)!=plot_color(b->spectrum[i],b->spectrum_hold[i],d,0))return 1;
         return 0;
     }
-    if(y>=121 && y<125)return a->stereo[0]*210u/255!=b->stereo[0]*210u/255;
-    if(y>=129 && y<133)return a->stereo[1]*210u/255!=b->stereo[1]*210u/255;
-    if((y>=149 && y<178)||(y>=190 && y<219)) {
-        unsigned first=y<180?0:8,i;int rel=(int)y-(first?192:151);
-        if(a->selected!=b->selected && ((a->selected>=first && a->selected<first+8) ||
-            (b->selected>=first && b->selected<first+8)))return 1;
-        for(i=first;i<first+8;i++) {
+    if(y>=151 && y<215) {
+        unsigned i;
+        if(a->selected!=b->selected)return 1;
+        for(i=0;i<16;i++) {
             unsigned ma=(a->mutes>>i)&1,mb=(b->mutes>>i)&1;
-            if(rel>=20 && rel<27 && ma!=mb)return 1;
-            if(rel>=0 && rel<=16) {
-                unsigned d=16-(unsigned)rel,seg=d/3;
-                if(d%3!=2) {
-                    unsigned ca=a->parts[i]>seg*255/6?(ma?15:seg<2?10:seg<4?11:14):3;
-                    unsigned cb=b->parts[i]>seg*255/6?(mb?15:seg<2?10:seg<4?11:14):3;
-                    if(ca!=cb)return 1;
-                }
-                unsigned ha=a->hold[i] && rel==15-(int)((a->hold[i]-1)*6/255)*3;
-                unsigned hb=b->hold[i] && rel==15-(int)((b->hold[i]-1)*6/255)*3;
-                if(ha!=hb || (ha && ma!=mb))return 1;
-            }
+            if(y>=153 && y<160 && ma!=mb)return 1;
+            if(y>=PART_TOP && y<PART_TOP+PLOT_HEIGHT &&
+               plot_color(a->parts[i],a->hold[i],PART_TOP+PLOT_HEIGHT-1-y,ma)!=plot_color(b->parts[i],b->hold[i],PART_TOP+PLOT_HEIGHT-1-y,mb))return 1;
         }
         return 0;
     }
@@ -145,6 +168,7 @@ int fm1_screen_command(fm1_screen *s,fm1_screen_snapshot snapshot,void (*yield)(
         s->active=0;
         if(snapshot(u,&s->view,&s->frame)){reply(ctx,"ERR MDX SHOT NO_COMPLETE_FRAME\n");return 1;}
         s->view.title[32]=0;s->view.subtitle[38]=0;
+        s->view.credit[127]=0;
         if(!++s->token)++s->token;s->crc=crc(&s->view,yield,u);s->last_ms=now;s->active=1;
         snprintf(out,sizeof(out),"OK MDX SHOT %08lx 240 240 I4 %08lx frame=%lu\n",(unsigned long)s->token,(unsigned long)s->crc,(unsigned long)s->frame);reply(ctx,out);return 1;
     }

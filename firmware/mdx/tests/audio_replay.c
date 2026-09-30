@@ -19,7 +19,8 @@ volatile int fm1_display_error;
 static unsigned ms,duration,stress,wrap_seeded,restarts,producer_stalls,song_restarts;
 static int drift;
 static unsigned lcd_us,lcd_command,lcd_y,checked_frame;
-static uint8_t lcd_buffer[240][480];
+static uint8_t lcd_buffer[240][480],previous_parts[16];
+static unsigned part_rises[16],part_falls[16];
 static void advance(unsigned);
 static uint32_t adc;
 static uint64_t dac_clock;
@@ -33,6 +34,7 @@ uint32_t timer_get_ms(void){return ms/10*10;}
 void wdt_clear(void){
     if(screen_frame!=checked_frame){unsigned y;uint8_t expected[480];
         for(y=0;y<240;y++){fm1_screen_row(&screen_shown,y,expected);CHECK(!memcmp(expected,lcd_buffer[y],480));}
+        for(y=0;y<16;y++){part_rises[y]+=screen_shown.parts[y]>previous_parts[y];part_falls[y]+=screen_shown.parts[y]<previous_parts[y];previous_parts[y]=screen_shown.parts[y];}
         checked_frame=screen_frame;
     }
 }
@@ -113,6 +115,7 @@ int main(int argc,char **argv){
     fprintf(stderr,"Song restarts=%u, playing=%u, sequencer ended=%u\n",song_restarts,player.playing,player.sequence.ended);
     fprintf(stderr,"%s",usb);
     fprintf(stderr,"Display: frames=%u fps=%.2f rows=%u skipped=%u max_ms=%u (400us/row wire-cost model)\n",screen_frame,(double)screen_frame/duration,ui_rows,ui_skipped,ui_max_ms);
+    {unsigned part;fprintf(stderr,"Part motion rises/falls:");for(part=0;part<16;part++)fprintf(stderr," %u:%u/%u",part+1,part_rises[part],part_falls[part]);fputc('\n',stderr);}
     if(duration>=5)CHECK(screen_frame>duration*10 && ui_skipped>ui_rows);
     if(strcmp(argv[1],"--demo")){free(m);free(p);}
     CHECK(!player.error&&!lcd_error&&!audio_error);if(!stress)CHECK(!underruns&&!errors);

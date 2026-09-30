@@ -126,16 +126,17 @@ static void row_address_tests(void) {
     CHECK(lcd_first && lcd_last);
 }
 static void ui_timing_tests(void) {
-    unsigned i;control.running=1;
-    for(i=0;i<16;i++)player.meters.parts[i]=32768;
-    player.meters.stereo[0]=32768;player.meters.stereo[1]=16384;
-    ui_update(50);CHECK(ui.parts[0]==255 && ui.parts[15]==255 && ui.hold[0]==255 && ui.stereo[0]==255);
-    ui_update(400);CHECK(ui.parts[0]==153 && ui.hold[0]==255 && ui.stereo[0]==187);
-    ui_update(600);CHECK(!ui.parts[0] && ui.hold[0]==204);
+    unsigned i,held_level;control.running=1;ui_title_dirty=1;
+    CHECK(!fm1_mdx_load(&player,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size));
+    player.sequence.tracks[0].opm_volume=0;fm1_mdx_song_write(&player,8,0x78);
+    ui_update(50);CHECK(ui.parts[0]==245 && ui.hold[0]==245);
+    ui_update(400);CHECK(ui.parts[0]>80 && ui.parts[0]<200 && ui.hold[0]==245);held_level=ui.parts[0];
+    fm1_mdx_song_write(&player,8,0);ui_update(400);CHECK(ui.parts[0]<held_level/2 && ui.hold[0]==245);
+    fm1_mdx_song_write(&player,8,0x78);fm1_mdx_song_write(&player,8,0);
+    ui_update(50);CHECK(ui.parts[0]==245 && ui.hold[0]==245); /* Short event is latched. */
     silence();ui_update(50);
-    for(i=0;i<16;i++)CHECK(!ui.parts[i] && !ui.hold[i] && !part_motion[i].hold_ms);
-    for(i=0;i<24;i++)CHECK(!ui.spectrum[i] && !spectrum_motion[i].level_milli);
-    CHECK(!ui.stereo[0] && !ui.stereo[1]);
+    for(i=0;i<16;i++)CHECK(!ui.parts[i] && !ui.hold[i] && !part_motion[i].level_milli);
+    for(i=0;i<32;i++)CHECK(!ui.spectrum[i] && !ui.spectrum_hold[i] && !spectrum_motion[i].level_milli);
 }
 int main(void){row_address_tests();panel_tests();audio_boundary_tests();ui_timing_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
     CHECK(opened==1 && closed==1 && key_stopped==1 && lcd_stopped==1 && timer_deleted==1);

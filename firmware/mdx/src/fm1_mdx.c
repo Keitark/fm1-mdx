@@ -1,9 +1,41 @@
 #include "fm1_mdx.h"
 #include "fm1_mdx_mix.h"
 #include <string.h>
+static unsigned part_velocity(const fm1_mdx_player *p,unsigned ch) {
+    const retrofm_mdx_track_state *t=&p->sequence.tracks[ch];
+    int attenuation=t->opm_volume+p->sequence.fade_value;
+    if(ch<8 && t->amplitude_lfo.enabled)attenuation+=t->amplitude_lfo.pitch;
+    if(attenuation<0)attenuation=0;if(attenuation>127)attenuation=127;
+    return (unsigned)(127-attenuation);
+}
+static uint8_t part_volume(const fm1_mdx_player *p,unsigned ch) {
+    /* MMDSP uses28 levels: max((velocity>>2)-4,0). Keep that scale
+       distinct from the unquantized velocity driving note spectrum energy. */
+    unsigned step=part_velocity(p,ch)>>2;
+    return step>4?(uint8_t)((step-4)*255/28):0;
+}
+static void part_onset(fm1_mdx_player *p,unsigned ch) {
+    static const uint8_t semitone[16]={0,1,2,2,3,4,5,5,6,7,8,8,9,10,11,11};
+    unsigned midi;
+    p->meter_triggers|=(uint16_t)(1u<<ch);p->meter_seen|=(uint16_t)(1u<<ch);
+    p->meter_onsets[ch]=part_volume(p,ch);
+    if(ch<8){unsigned kc=p->registers[0x28+ch];midi=13+(kc>>4)*12+semitone[kc&15];}
+    else midi=(unsigned)(p->sequence.tracks[ch].note<0?13:p->sequence.tracks[ch].note+13);
+    fm1_meters_note(&p->meters,midi,(uint8_t)part_velocity(p,ch));
+}
+uint16_t fm1_mdx_part_activity(fm1_mdx_player *p,uint8_t volume[16],uint8_t onset[16],uint16_t *held) {
+    unsigned ch;uint16_t triggered=p->meter_triggers;*held=0;
+    for(ch=0;ch<16;ch++) {
+        volume[ch]=(p->meter_seen&(1u<<ch))?part_volume(p,ch):0;
+        onset[ch]=p->meter_onsets[ch];
+        if(ch<8?p->meter_keys[ch]!=0:p->pcm.voices[ch-8].active)*held|=(uint16_t)(1u<<ch);
+    }
+    p->meter_triggers=0;return triggered;
+}
 static void write_reg(fm1_mdx_player *p,unsigned reg,unsigned value) {
     p->registers[reg]=(uint8_t)value;
     ym2151_write_reg(&p->opm,(int)reg,(int)value);
+    if(reg==8){unsigned ch=value&7;p->meter_keys[ch]=(uint8_t)(value&0x78);if(value&0x78)part_onset(p,ch);}
 }
 static void live_pitch(fm1_mdx_player *p,unsigned ch) {
     static const uint8_t kc[12]={0,1,2,4,5,6,8,9,10,12,13,14};
@@ -59,12 +91,14 @@ static bool pcm_event(void *user,const retrofm_mdx_pcm_command *c) {
     case RETROFM_MDX_PCM_SET_PAN:r=retrofm_pcm_set_pan(&p->pcm,ch,c->pan);break;
     default:return false;
     }
+    if(r==RETROFM_PCM_OK && c->opcode==RETROFM_MDX_PCM_PLAY)part_onset(p,ch+8);
     return r==RETROFM_PCM_OK;
 }
 void fm1_mdx_stop(fm1_mdx_player *p) {
     unsigned i;
     for(i=0;i<8;i++){write_reg(p,8,i);p->live_note[i]=-1;retrofm_pcm_stop(&p->pcm,i);}
     p->pcm_left=p->pcm_right=p->pcm_previous_left=p->pcm_previous_right=0;p->playing=0;
+    p->meter_triggers=p->meter_seen=0;
 }
 int fm1_mdx_load(fm1_mdx_player *p,const uint8_t *mdx,size_t n,const uint8_t *pdx,size_t pn) {
     unsigned i;
@@ -137,15 +171,7 @@ int fm1_mdx_render(fm1_mdx_player *p,int16_t *stereo,size_t frames) {
         /* MAME's YM2151 bit7 is left; MDX bit6 is left. Swap FM only. */
         stereo[2*i]=fm1_mdx_mix_sample(p->right[0],p->pcm_previous_left,p->pcm_left,p->pcm_phase);
         stereo[2*i+1]=fm1_mdx_mix_sample(p->left[0],p->pcm_previous_right,p->pcm_right,p->pcm_phase);
-        {unsigned ch;for(ch=0;ch<8;ch++) {
-            /* FM carrier sum before shared cubic mixer; shift matches FINAL_SH.
-               Pan-disabled voices are silent at the output. */
-            if(p->opm.pan[ch*2] || p->opm.pan[ch*2+1])
-                fm1_meters_peak(&p->meters.parts[ch],p->opm.chanout[ch]/2);
-            if(p->pcm.peaks[ch]>p->meters.parts[ch+8])p->meters.parts[ch+8]=p->pcm.peaks[ch];
-            p->pcm.peaks[ch]=0;
-        }}
-        fm1_meters_feed(&p->meters,stereo[2*i],stereo[2*i+1]);
+        /* Display is event-driven: no per-sample part/FFT/LR tap work. */
         p->remainder+=RETROFM_PL_CLOCK_HZ;
         p->cycles+=p->remainder/FM1_MDX_RATE;p->remainder%=FM1_MDX_RATE;
     }

@@ -5,6 +5,49 @@
 #include <string.h>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 static fm1_meters m;
+static void event_tests(void) {
+    fm1_part_motion regular={0},slow,jitter,off,trace={0};fm1_note_motion spectrum={0},split={0};
+    uint8_t bands[32];unsigned i;const unsigned intervals[]={17,83,120,280,500};
+    fm1_part_step(&regular,1,245,245,1,0);slow=jitter=off=regular;
+    for(i=0;i<20;i++)fm1_part_step(&regular,0,0,245,1,50);
+    for(i=0;i<12;i++)fm1_part_step(&slow,0,0,245,1,i==11?87:83);
+    for(i=0;i<5;i++)fm1_part_step(&jitter,0,0,245,1,intervals[i]);
+    CHECK(!memcmp(&regular,&slow,sizeof(regular)) && !memcmp(&regular,&jitter,sizeof(regular)));
+    CHECK(regular.step>0 && regular.step<15);
+    fm1_part_step(&off,0,0,245,0,1000);CHECK(!off.level_milli);
+    /* Source-derived default sensitivity60: 27,27,27,26 over3 ticks. */
+    fm1_part_step(&trace,1,245,245,1,0);CHECK(trace.step==27 && trace.counter==60);
+    fm1_part_step(&trace,0,0,245,1,17);CHECK(trace.step==27 && trace.counter==33);
+    fm1_part_step(&trace,0,0,245,1,17);CHECK(trace.step==27 && trace.counter==6);
+    fm1_part_step(&trace,0,0,245,1,16);CHECK(trace.step==26 && trace.counter==39);
+    fm1_part_step(&regular,1,36,245,1,50);CHECK(regular.step==4); /* Lower note retriggers. */
+    fm1_part_step(&regular,0,0,9,1,0);CHECK(regular.step==1); /* Volume marker limits bar. */
+    fm1_part_step(&regular,0,0,245,1,UINT32_MAX);CHECK(!regular.level_milli && !regular.remainder_ms);
+    memset(&m,0,sizeof(m));fm1_meters_note(&m,69,127);
+    CHECK(m.note_energy[18]==127 && m.note_energy[17]==94 && m.note_energy[16]==39 && m.note_energy[14]==31 && m.note_energy[13]==7);
+    fm1_meters_note_spectrum(&m,bands);CHECK(bands[18]==12*255/28);
+    fm1_meters_note_spectrum(&m,bands);for(i=0;i<32;i++)CHECK(!bands[i]);
+    for(i=0;i<10000;i++)fm1_meters_note(&m,69,127);
+    CHECK(m.note_energy[18]==65535);fm1_meters_note_spectrum(&m,bands);CHECK(bands[18]==255 && !bands[0] && !bands[31]);
+    fm1_meters_note(&m,13,127);fm1_meters_note(&m,108,127);fm1_meters_note_spectrum(&m,bands);
+    CHECK(bands[0]==12*255/28 && bands[31]==12*255/28);
+    memset(&m,0,sizeof(m));fm1_meters_note(&m,0,127);fm1_meters_note(&m,UINT32_MAX,127);fm1_meters_note(&m,69,0);
+    for(i=0;i<32;i++)CHECK(!m.note_energy[i]);
+    fm1_note_step(&spectrum,127,17);CHECK(spectrum.step==6 && spectrum.peak==6 && spectrum.peak_count==59);
+    fm1_note_step(&spectrum,0,17);CHECK(spectrum.step==9);
+    fm1_note_step(&spectrum,0,16);CHECK(spectrum.step==11);
+    split=spectrum;
+    fm1_note_step(&spectrum,0,1000);for(i=0;i<20;i++)fm1_note_step(&split,0,50);
+    CHECK(!memcmp(&spectrum,&split,sizeof(spectrum)));
+    fm1_note_step(&spectrum,0,UINT32_MAX);CHECK(!spectrum.step && !spectrum.peak);
+    fm1_note_step(&spectrum,65535,84);CHECK(spectrum.step==28 && spectrum.peak==28 && spectrum.peak_count==59);
+    fm1_note_step(&spectrum,0,983);CHECK(spectrum.step && spectrum.peak==28 && !spectrum.peak_count);
+    fm1_note_step(&spectrum,0,17);CHECK(spectrum.peak==27 && spectrum.peak_count==5);
+    fm1_note_step(&spectrum,0,100);CHECK(spectrum.peak==26); /*6-tick fall with nonzero bar. */
+    spectrum.step=spectrum.target=spectrum.counter=0;spectrum.peak_count=0;
+    fm1_note_step(&spectrum,0,17);CHECK(spectrum.peak==25 && spectrum.peak_count==1);
+    fm1_note_step(&spectrum,0,33);CHECK(spectrum.peak==24); /*2-tick fall with zero bar. */
+}
 static void motion_tests(void) {
     fm1_meter_motion regular={0},slow={0},jitter={0},cap={0};
     const unsigned intervals[]={17,83,120,280,500};unsigned i;
@@ -35,7 +78,7 @@ static void tone(int bin,int mode,uint8_t *out) {
 }
 int main(void) {
     uint8_t out[24]={0},anti[24],left[24];unsigned i;
-    motion_tests();
+    motion_tests();event_tests();
     fm1_meters_spectrum(&m,out);for(i=0;i<24;i++)CHECK(!out[i]);
     for(i=0;i<256;i++)fm1_meters_feed(&m,0,0);
     fm1_meters_spectrum(&m,out);for(i=0;i<24;i++)CHECK(!out[i]);

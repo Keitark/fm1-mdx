@@ -1,91 +1,109 @@
-# Pocket-style MDX display
+# MMDSP-style MDX display
 
-The 240x240 UI uses a dark violet palette, two song-title lines, a stereo FFT,
-L/R output peaks, eight FM/MDX meters and eight PCM8 meters. The selected FM
-part has a frame; karaoke parts use amber. The footer names the physical
-SELECT knob, FX mute and PLAY/STOP controls. OCT-/OCT+ retain keyboard transpose.
+The240x240 LCD now has32 note-spectrum columns and16 part columns in one
+horizontal row (FM1..8, PCM1..8). Both logical256x56 plots are uniformly scaled
+to224x49, preserving their aspect ratio and28 vertical steps. L/R meters are
+removed. Physical addressing remains rows0..239. The violet palette, karaoke
+highlight and SELECT/FX/PLAY-STOP controls remain. Full part velocity uses27
+steps, leaving the original top headroom within the28-step plot.
 
-The spectrum is a256-point radix-2 fixed-point FFT of a complete stereo audio
-window, with a periodic Hann window. Each of24 bands takes the maximum bin
-power across both channels, so opposite-phase signals do not cancel. Resolution
-is172.27Hz; the final band includes Nyquist at22.05kHz. Levels map approximately
--60..0dBFS to bar height. The input is the final synthesized mix before the
-analog volume envelope; PC recording and meters therefore do not follow the
-physical volume knob. FFT windows are sampled once per UI update, not continuously.
+## Reference review and motion
 
-Part meters accumulate actual sample peaks between updates. FM taps each OPM
-carrier sum after FINAL_SH, before the shared cubic output curve and group gain.
-PCM taps decoded/interpolated voice samples after voice gain/pan, before the
-final PCM group gain and stereo clipping. These are voice activity/peak meters,
-not isolated FFTs, calibrated loudness comparisons or note-on indicators. Manual
-karaoke notes are included. Decaying bars and slower peak caps aid reading.
+The Ray Force reference is https://www.youtube.com/watch?v=UmHjuRGaTlU
+(the supplied link label also pointed to GQ4tdCpw_ls). Frame comparisons at
+38.41/38.56/38.86/39.36 seconds showed tall striped parts, configured-velocity
+lines and independently falling spectrum caps. Source review:
 
-Meter motion follows the supplied MMDSP references. Attack is immediate at the
-next view update. FFT bars release at about32dB/s, FM/PCM bars at60dB/s and
-L/R peaks at40dB/s. Part caps hold400ms after a qualifying peak, then release
-at20dB/s. A lower signal does not restart the hold. These are visual tuning
-values, not measured constants from MMDSP. All envelopes use elapsed milliseconds
-and retain fractional levels, so lower or irregular LCD FPS does not stretch
-their tails. STOP clears all bars/caps. The envelopes run only in the owner task;
-they add no interrupt/timer work and do not change audio samples or scheduling.
+- https://github.com/gaolay/MMDSP/blob/master/src/_LEVEL.s
+- https://github.com/gaolay/MMDSP/blob/master/src/_SPEANA.s
+- https://github.com/gaolay/MMDSP/blob/master/src/MXCTRL.s
+- https://github.com/gaolay/MMDSP/blob/master/src/INIT.s
 
-The owner task requests a new view every50ms (20Hz target). It compares rows
-against the last completed view and writes only changed rows. At most four rows
-are examined per batch, then audio synthesis/control service resumes. Audio ring
-occupancy must be at least1470 frames before each LCD row. Synchronous stock DMA
-waits keep IRQs enabled; LCD pins, clock and controller setup are unchanged.
-The old10ms sleep after every row is removed. No full-frame pixel buffer is added.
+The standard MMDSP spectrum is derived from pitch/velocity events, rather than
+an audio FFT. The FM1 implementation uses original C state machines for the
+source's standard/integrating display rules and mathematical level tables:
 
-The latest candidate checks row-specific visual dependencies before rendering.
-Static rows require no rasterization. FFT/bar segments compare their displayed
-thresholds; peak markers compare positions; text compares relevant fields. A
-changed row is rendered once, replacing old/new rasterization and pixel comparison.
-The dependency check is conservative, without hashes. Regression mutations
-check that every skipped row has identical pixels; replay checks completed LCD
-RAM against the full renderer. Hardware FPS remains to be measured.
+- Part note-on resets the bar to max((velocity>>2)-4,0). Its thin line shows
+  configured velocity, not a historical peak. A height-dependent counter with
+  default sensitivity60 reduces held notes one step at a time. Note-off reduces
+  a step every other logical tick. Short applied notes are latched between LCD
+  updates. Manual karaoke notes are included; suppressed song triggers are not.
+- Spectrum uses three semitones per column. Each onset adds linear velocity to
+  its center and weighted contributions through five neighbors on either side;
+  the distance4 shoulder is intentional. The standard level thresholds and
+  half-level integration energy determine the new target. Rise traverses half
+  the remaining distance, rounded up, per logical tick. Default decay uses the
+  height-dependent counter with sensitivity24.
+- Spectrum maximum lines hold60 logical ticks after a strictly higher level,
+  then fall every6 ticks while the bar is nonzero, or every2 ticks when zero.
+  Equal/lower arrivals do not restart the hold. Part velocity lines do not fall
+  with their activity pulse. STOP clears both plots and their lines.
 
-For the updated renderer, the same180s Super Laydock replay at+500ppm completes
-3598 views with85117 written/778403 skipped rows and zero audio errors. The
-slightly conservative dependencies write about2.4% more rows than exact pixel
-comparison in that case, while eliminating the second render and all renders
-of unchanged rows. Host wire timing still excludes PI32 execution costs.
+Logical ticks run at60Hz in the owner task, accumulating elapsed milliseconds;
+LCD redraw is requested at20Hz. No new IRQ/timer is added. This reproduces the
+source's counter rules, but does not establish exact timing of the supplied
+X68000 video: the original vector/display mode and interrupt frequency are not
+known. FM1 displays completed snapshots at its achievable LCD rate. This is not
+a pixel-identical full MMDSP screen or a measured audio spectrum. The original
+assembly is retained only as a private reference, not distributed in this repo.
 
-`python firmware/mdx/usb_client.py display --port COM4` returns completed-frame
-count, `fps10` (ten times FPS, over the last reporting interval), written/skipped
-rows, maximum frame-completion time and the20Hz target. An unchanged view still
-counts as a completed refresh; use row counters to distinguish physical writes.
-Long or audio-constrained frames can run below target. These counters measure
-software completion, not LCD scanout, and the SDK clock has10ms resolution.
+The device no longer collects FFT windows or computes per-sample FM/PCM/LR
+peaks. Existing FFT helpers remain for standalone host checks. Audio sample
+clock, synthesis, PCM interpolation, mixing and USB output are unchanged. The
+internal speaker/headphone path has no added LPF; the user chose to keep it
+unfiltered. USB audio still precedes the physical-volume gain ramp.
 
-## Validation and bench boundary
+## Embedded credits
 
-The host replay models400us per LCD pixel-row transfer, the real10ms RTOS tick,
-audio consumer and UAC encoder. Normal private Super Laydock playback at+500ppm
-for180 simulated seconds completed3598 views (19.99FPS),83094 row writes and
-780426 skipped rows, with no synth missing frames, rebuffers or USB FIFO errors.
-The initial full redraw took90ms in that model. The model excludes actual PI32
-CPU/render costs, DMA behavior and the Windows driver; hardware FPS is unverified.
+The title parser retains explicitly embedded wording such asLAY0_V's
+`Ar.By Veyrlen` andMASOSH's `by YURAYSAN`. It recognizes By/Ar.By/Arranged by/
+Programmed by/Composed by without inventing an author role. When absent it shows
+`NO EMBEDDED CREDIT`. Credits exceeding the224px text window scroll with end
+pauses. Parsing is bounded to the first255 title bytes and127 credit characters;
+non-ASCII bytes are shown as question marks by the current ASCII font. Metadata
+is parsed once on load rather than on every refresh.
 
-Regression tests check FFT frequencies, silence, full scale and opposite-phase
-stereo, screenshot pixel/palette/CRC agreement, frozen captures and token bounds.
-Meter regressions check immediate attack, distinct release rates, peak hold and
-retrigger, identical motion at20FPS/12FPS/irregular intervals, a long pause, and
-the actual target's STOP clearing behavior.
-The replay checks every committed view against modeled LCD RAM, including dirty
-rows. A10-second demo WAV remains byte-identical before/after meter instrumentation.
-The board link retains startup, power and recovery audits; exact reviewed LTO
-global relocations are checked, including corruption rejection tests.
+## Rendering and validation
+
+Only rows changed from the last complete view are rendered/written. Row checks
+compare displayed thresholds, cap positions and relevant text fields, without
+hashes or a second rasterization. Four-row batches return to audio/control work;
+LCD writes require at least1470 queued frames. The requested50ms view interval,
+stock panel/pins/clock and synchronous DMA with IRQs enabled remain unchanged.
+No full pixel framebuffer is added. Screenshot snapshots remain immutable and
+match completed LCD views, including credit-scroll position.
+
+Host regressions check source-derived counter traces, logical-tick invariance
+at20FPS/12FPS/jittered updates, pitch spreading and saturation, peak behavior,
+short triggers, karaoke ownership, PCM stop, metadata and all32/16 plot columns.
+Dirty-row mutations include credit scrolling and spectrum caps. Every completed
+replay view is compared against modeled physical LCD RAM at zero row offset.
+The10-second demo WAV is byte-identical before/after these changes:
+SHA256 b55f9ef31d89665937ef51e52185a7c44d949a8b5f59c59cbce7a6a46bee47db.
+
+The180-second privateLAY0_V replay at+500ppm completes3598 modeled views
+(19.99FPS),127262 row writes and736258 skipped rows, with zero missing audio
+frames, rebuffers or USB FIFO errors. All14 parts used by this song show repeated
+rises/falls; the remaining two PCM parts are idle. This400us/row wire-cost model
+excludes PI32 execution cost, DMA behavior and the Windows driver. It is not a
+hardware FPS or USB reliability result.
+
+`python firmware/mdx/usb_client.py display --port COM4` reports completed-frame
+count, FPS times10, written/skipped rows and maximum frame time. An unchanged
+view still counts as a completed refresh. These are software completion counts,
+not LCD scanout; the SDK clock has10ms resolution.
 
 Build with `python scripts/build.py host` and
-`python scripts/build.py firmware --usb-audio`. Generate a native-renderer preview
-with `screen_preview song.MDX bank.PDX preview.i4`; the PC helper
-`screenshot_png(data,4)` converts it to PNG without changing palette colors.
-Commercial inputs and generated recordings stay outside this repository.
+`python scripts/build.py firmware --usb-audio`; run the linked corruption checks
+with `python firmware/usb-audio/test_link.py`. A private native-renderer preview
+can be generated with `screen_preview song.MDX bank.PDX preview.i4` and converted
+using `screenshot_png(data,4)`. Songs and generated audio remain private.
 
-This UI candidate requires an exact-image approved flash, actual FPS/audio tests,
-karaoke/control acceptance, and a live screenshot check. It does not resolve or
-qualify the separately investigated USB audio byte-alignment noise.
+The revised motion/layout candidate awaits exact-image flashing and hardware
+meter/FPS/control/audio acceptance. It does not resolve the independent
+capture-active USB audio byte-alignment/CDC stall investigation under#9.
 
+## Historical bench evidence
 
 ## First bench result and correction
 
