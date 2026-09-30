@@ -16,6 +16,8 @@ unit-specific flash images.
 
 - Stereo YM2151 at 44.1kHz, plus PDX ADPCM/PCM8 through the RetroFM mixer.
 - Original `FM1DEMO.MDX` and `FM1DEMO.PDX` are compiled into read-only flash.
+- The demo starts with its repeating PCM drum on track9 muted. Uploaded songs
+  start with their original mix; track mute controls remain available.
 - Choose an FM track, enable karaoke mute and play its current voice with the
   physical keyboard. This is monophonic on the chosen YM2151 channel.
 - Muting releases the existing song note once. Further playback note-ons **and
