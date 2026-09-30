@@ -99,8 +99,8 @@ with `python firmware/usb-audio/test_link.py`. A private native-renderer preview
 can be generated with `screen_preview song.MDX bank.PDX preview.i4` and converted
 using `screenshot_png(data,4)`. Songs and generated audio remain private.
 
-The revised motion/layout candidate awaits exact-image flashing and hardware
-meter/FPS/control/audio acceptance. It does not resolve the independent
+The revised motion/layout candidate is flashed and readback-verified. Hardware
+reference-motion/control/audible acceptance remains open. It does not resolve the independent
 capture-active USB audio byte-alignment/CDC stall investigation under#9.
 
 ## Historical bench evidence
@@ -166,3 +166,34 @@ keys=0, valid ADC, zero reported synth underruns/rebuffers/peripheral errors and
 14.5-17.8FPS. Scanner completions continue; USB capture submissions are zero.
 This verifies playback/CDC progress with capture closed, not the unresolved
 simultaneous capture/CDC case or the subjective reference-meter match.
+
+
+## 2026-10-01 source-counter deployment
+
+The user explicitly requested flashing buildb40180f. Image
+c9810a4798fc19812cd8e3ad0e5254ee7ecdf070cf449739d71d48f892d1b156
+was written in48 directory-last sectors and one full1MiB readback matched.
+Installed2065596f... is preserved privately for rollback. The first updater
+handshake's teardown-retry reply arrived after the helper's short window;
+no write occurred. Its failure journal is retained and helper stopped. A fresh
+protected session from the verified baseline entered UBOOT after shutdown.
+One reset was sent; the known UTF8 log-decoding error was resolved by successful
+CDC boot observation, without another reset. Active protected session:
+`C:\Program Files\FM1FlashSession-90d6c25107054d04bae2fa98e893fd4e`.
+It is idle/unblocked with no reset or observation pending.
+
+LAY0_V.MDX/LAY_V.PDX reloaded with capture closed in88.109s (143574 bytes).
+PLAY was acknowledged. Frames progressed7480640 to13945216, running/ready,
+with zero reported synth underruns, rebuffers, late callbacks or peripheral
+errors. Live screenshot frame4578 shows32 spectrum columns,16 inline parts,
+independent caps and embedded Ar.By Veyrlen. Screenshot retrieval succeeded
+while playback continued. Hardware FPS readings are11.7-17.4, latest13.4;
+the20FPS target is not met during this measured busy section. No hardware
+CPU-time improvement or exact reference timing is claimed.
+
+MASTER initially read zero. After the user adjusted it, the ADC reads59 and
+target/gain7, valid/progressing with zero ADC errors. Audio remains unfiltered.
+This confirms volume control progress, not subjective audible acceptance.
+The part's thin line is configured velocity and intentionally persists until
+that parameter changes; only spectrum caps are timed holds. Reference-motion
+acceptance and capture-active USB/CDC reliability remain open.
