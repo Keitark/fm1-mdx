@@ -107,10 +107,11 @@ static void audio_boundary_tests(void) {
     ms=6;audio_output(0,(u8 *)out,512,3);CHECK(rebuffer_frames==128 && underruns==64);
     for(i=0;i<1470;i++){ring[(wr+i)&2047][0]=3000;ring[(wr+i)&2047][1]=-3000;}wr+=1470;
     ms=8;audio_output(0,(u8 *)out,512,3);CHECK(primed && out[0]==3000*128);
-    ms=14;audio_output(0,(u8 *)out,512,3);CHECK(late_callbacks==1 && callback_gap_ms==6);
+    ms=18;audio_output(0,(u8 *)out,512,3);CHECK(!late_callbacks && callback_gap_ms==10);
+    ms=38;audio_output(0,(u8 *)out,512,3);CHECK(late_callbacks==1 && callback_gap_ms==20);
     command("MDX TIMING");snprintf(diagnostics,sizeof(diagnostics),"%s",answer);
     CHECK(strstr(diagnostics,"late=1") && strstr(diagnostics,"rebuffer=1"));
-    silence();ms=16;audio_output(0,(u8 *)out,512,3);CHECK(rebuffer_frames==128);
+    silence();ms=40;audio_output(0,(u8 *)out,512,3);CHECK(rebuffer_frames==128);
     rd=wr=underruns=frames=callback_ms=callback_gap_ms=late_callbacks=rebuffer_events=rebuffer_frames=render_max_ms=0;
     callback_seen=0;queue_min=2048;ms=0;memset(&mdx_volume,0,sizeof(mdx_volume));
 }

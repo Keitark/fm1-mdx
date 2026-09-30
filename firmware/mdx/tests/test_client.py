@@ -18,6 +18,14 @@ class Pipe:
     def __exit__(self,*args):
         self.proc.stdin.close();self.proc.wait(timeout=5);self.proc.stdout.close()
 class ClientTests(unittest.TestCase):
+    def test_audio_reply_ignores_stale_status(self):
+        class Port:
+            def __init__(self):self.data=bytearray(b'MDX running=1 underruns=5\nMDX AUDIO under=0,0\n')
+            def write(self,data):return len(data)
+            def read(self,n):
+                result=bytes(self.data[:n]);del self.data[:n];return result
+        self.assertEqual(client.control_reply(Port(),'MDX AUDIO'),'MDX AUDIO under=0,0')
+
     def test_identity_ignores_partial_reconnect_diagnostic_line(self):
         class Port:
             def __init__(self):self.data=bytearray(('uptime=12 boot=serial-uboot\n# diagnostic\n'+client.HELLO+'\n').encode())

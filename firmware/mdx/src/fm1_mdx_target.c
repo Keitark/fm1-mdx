@@ -110,7 +110,9 @@ static void audio_output(void *ctx,u8 *data,int len,u8 ch) {
     (void)ctx;
     if(!data || len<=0)return;
     if(ch!=3 || len!=512){memset(data,0,(unsigned)len);audio_error=-1;return;}
-    if(callback_seen){unsigned gap=now-callback_ms;if(gap>callback_gap_ms)callback_gap_ms=gap;if(gap>=4)late_callbacks++;}
+    /* The pinned SDK exposes jiffies*10, not a1ms clock. A normal callback
+       crossing a tick reads10ms; only two or more ticks are suspicious. */
+    if(callback_seen){unsigned gap=now-callback_ms;if(gap>callback_gap_ms)callback_gap_ms=gap;if(gap>=20)late_callbacks++;}
     callback_ms=now;callback_seen=1;
     if(!primed && available>=1470){primed=1;audio_playing=1;}
     if(primed && available<queue_min)queue_min=available;

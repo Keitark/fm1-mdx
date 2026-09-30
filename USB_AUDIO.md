@@ -62,9 +62,10 @@ to avoid a full-scale step when an application stops supplying packets. This
 does not alter the MDX recording tap.
 
 `python firmware/mdx/usb_client.py timing --port COM4` reports coarse DAC
-callback spacing, callbacks separated by at least4ms, minimum primed queue
-fill, rebuffer events/missing frames and longest render duration. The1ms clock
-is not precise enough to certify the1.45ms DMA deadline; these are diagnostic
+callback spacing, callbacks separated by at least20ms, minimum primed queue
+fill, rebuffer events/missing frames and longest render duration. Linked SDK
+disassembly shows `timer_get_ms` reads `jiffies*10`: resolution is10ms. A normal
+callback crossing a tick reads10ms. The clock cannot certify the1.45ms DMA deadline; these are diagnostic
 counters, not proof that every hardware DMA completion was serviced on time.
 
 ## Verification

@@ -9,6 +9,9 @@
   `606e3a7009aa1a9dfa6bee8bc875dbd5483714e9`. Package GPLv3 text and original
   authorship notices are preserved in `firmware/mdx/vendor/mdxtools`.
   The YM2151 source credits Jarek Burczynski and Tatsuyuki Satoh.
+  The FM1 fork replaces per-sample software-double cubic output shaping with
+  the same integer formula in `fm1_output.h`; upstream clipping behavior is
+  retained. Exhaustive comparison and a matched song render check equivalence.
 - Shared FM1 board-support/CDC/audit code is adapted from the FM1 research and
   FM1-NES source workspace. Existing dependency notices remain applicable;
   the Apache-2.0 license text is in `licenses/Apache-2.0.txt`.

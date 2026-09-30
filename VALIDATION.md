@@ -224,6 +224,31 @@ rebuffer accounting, delayed callbacks, signed PCM interpolation, saturation
 and nonzero PC underrun/recovery/stream-stop continuity. The linked power audit
 retains the normalized SDK hash and checks the reviewed diagnostic layout
 trace+380 and LRC/LRC/low-power+260/+272/+296, including corruption rejection.
-The correction remains unflashed until the concrete candidate is approved;
-audible glitch removal, current screen updates and real timing margins remain
-bench acceptance checks.
+The user approved this candidate, and commit`9e223de` was flashed with45 verified
+sectors and exact1MiB readback SHA256
+`5ff7edf9b1e97f3821cbbcf79cc97e408b38a8e2274d55e29d6ca31d35d9acb4`.
+One reset was sent; the reset CLI's text decoding error was resolved by
+successful observation, without another reset. The pre-fix composite rollback
+remains preserved separately.
+
+OutRun was reloaded into volatile RAM with all tracks unmuted. New live counters
+confirm genuine MDX buffer underruns and rebuffering, while the USB capture
+underrun/overrun and packet-error counters remain zero. A fresh240x240 completed
+screen shows PLAY / USB RAM. The first correction is not sufficient for audible
+acceptance. The old zero counter concealed gaps rather than proving headroom.
+
+Linked disassembly also proves the timing clock is `jiffies*10`, with10ms
+resolution. The first diagnostic's4ms late threshold therefore counted normal
+tick crossings. The follow-up threshold is20ms; sub-tick DMA deadlines remain
+unmeasured.
+
+The next candidate replaces per-sample software-double cubic output shaping
+with the same integer expression. All131,073 tested values from-65536 to65536
+match exactly, including the preserved upstream out-of-range behavior. A
+matched60-second OutRun render is byte-identical to the preceding candidate:
+2,646,000 frames, WAV SHA256
+`f760dcb957919c0c097f439a107df3a935b06e57ec3b71aefd2813a13ae94d46`.
+Six CTest groups, client/screenshot/descriptor checks and five linked corruption
+checks pass. The static audit needs no new instruction/layout exceptions.
+This optimization removes software floating-point work from output shaping;
+its hardware speed benefit and audible acceptance remain pending.
