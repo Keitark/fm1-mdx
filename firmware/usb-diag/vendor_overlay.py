@@ -259,6 +259,11 @@ def device(text):
                  'usb/device/slave_uvc.h','usb/device/printer.h'):
         text=once(text,'#include "'+name+'"\n','')
     text='extern int fm1_cdc_allocated(unsigned char);\n'+text
+    text=once(text,'        cdc_register(usb_id);', '''        cdc_register(usb_id);
+#ifdef FM1_USB_AUDIO
+        extern u32 fm1_uac_desc_config(usb_dev,u8 *,u32 *);
+        usb_add_desc_config(usb_id,class_index++,fm1_uac_desc_config);
+#endif''')
     text=once(text,'static void usb_device_init(const usb_dev usb_id)',
                     'static int usb_device_init(const usb_dev usb_id)')
     text=once(text,'    usb_config(usb_id);', '''    if(usb_config(usb_id))return -1;

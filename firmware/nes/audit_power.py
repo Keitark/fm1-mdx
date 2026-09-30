@@ -102,7 +102,7 @@ def call_target(code, address):
     return address + 4 + relative * 2
 
 
-def audit_power(symbols, sections, code_at, required=False, usb_only=False):
+def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_audio=False):
     def value(name):
         require(name in symbols, 'Missing board power symbol ' + name)
         return symbols[name][0]
@@ -148,14 +148,20 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False):
         (0x3c0,'sys_low_power',b'\xd0\xec',0x80,bytes.fromhex('d0 ec 81 36')),
     ):
         delta=value(target)-base
-        require(0<=delta<256 and delta%4==0,'Power merged-global offset outside reviewed encoding')
+        if usb_audio:
+            require(delta=={0x0d6:224,0x104:236,0x3c0:260}[off],
+                    'Composite audio power merged-global layout changed')
+        else:
+            require(0<=delta<256 and delta%4==0,'Power merged-global offset outside reviewed encoding')
         require(symbols[target][1]==4,'Power merged-global object size changed')
         if off==0x0d6:
             expected=prefix+bytes([regbits|(delta&15),delta>>4])
             require(value('lrc.1')==value('lrc.0')+4 and value('lrc.2')==value('lrc.0')+8,
                     'Power LRC state layout changed')
         else:
-            expected=prefix+bytes([regbits|1|(delta&15),(delta>>4)|(0x30 if off==0x3c0 else 0)])
+            # The reviewed composite layout puts sys_low_power at +260:
+            # its ninth offset bit is encoded in the first opcode byte.
+            expected=bytes([prefix[0]|(delta>>8),prefix[1]])+bytes([regbits|1|(delta&15),((delta&255)>>4)|(0x30 if off==0x3c0 else 0)])
         require(code_at(start+off,4)==expected,'Power merged-global target changed: '+target)
         normalized[off:off+4]=historical
     digest = hashlib.sha256(normalized).hexdigest()
@@ -166,7 +172,14 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False):
     expected = bytearray.fromhex('75 04 c4 ff 00 00 00 00 50 ee 4c 02 80 48 45 21 c5 6c '
                                   '00 00 00 00 52 ee 4c 52 4c ea 02 40 55 04')
     struct.pack_into('<I', expected, 4, phase-48)
-    if usb_only:
+    if usb_audio:
+        require(usb_only and phase==value('ota_status')+28 and
+                value('initialized')==value('ota_status')+24 and symbols['initialized'][1]==4,
+                'Composite audio power gateway state layout changed')
+        expected=bytearray.fromhex('75 04 c4 ff 00 00 00 00 50 ee 48 01 80 48 45 21 c5 67 '
+                                  '00 00 00 00 52 ee 48 51 47 ea 02 40 55 04')
+        struct.pack_into('<I',expected,4,value('ota_status'))
+    elif usb_only:
         require(phase==value('ota_status')+24,'USB power stage merged-global offset changed')
         expected=bytearray.fromhex('75 04 c4 ff 00 00 00 00 50 ee 44 01 80 48 45 21 c5 66 '
                                   '00 00 00 00 52 ee 44 51 46 ea 02 40 55 04')

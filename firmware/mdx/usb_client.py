@@ -54,7 +54,7 @@ def send(port,data):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action',choices=('list','upload','status','input','play','stop','demo','select','mute','note'))
+    p.add_argument('action',choices=('list','upload','status','input','audio','play','stop','demo','select','mute','note'))
     p.add_argument('--port');p.add_argument('--mdx',type=Path);p.add_argument('--pdx',type=Path)
     p.add_argument('--track',type=int,help='1..8 for select;1..16 for mute')
     p.add_argument('--note',type=int,help='MIDI13..108');p.add_argument('--on',type=int,choices=(0,1),default=1)
