@@ -420,3 +420,31 @@ scanner fault that must leave ADC volume sampling operational. The optimized
 Super Laydock preview is byte-identical in indexed pixels. The correction links
 with the pinned SDK and passes5 linked corruption regressions. It is not flashed
 or hardware accepted yet; its exact candidate and rollback need approval.
+
+
+### 2026-10-01 correction bench and zero-based LCD rows
+
+Image0284ee8 (2b38d55bebba6a8ab8076d214d5d26da1fc9f9e125b791ec10a01255c6f53832)
+was fully readback-verified and boot-observed. Live demo diagnostics show20FPS,
+keys=0, valid/progressing volume ADC, zero reported synth underruns/rebuffering,
+and no peripheral errors. The user confirms internal speaker output. USB
+transport diagnostics now count actual SDK submissions, short returns and busy
+endpoints; these counters still cannot certify received Windows PCM alignment.
+A Laydock transfer timed out, then a paced retry succeeded while capture was
+inactive. Concurrent capture/CDC failures remain unresolved under issue9.
+
+The MDX row writer had reintroduced y+40 despite the already qualified NES
+zero-based path. Commit4cc306d corrects it to y. Host regressions assert all240
+physical RASET addresses and compare each committed LCD image without offset
+compensation in the mock. All9 CTests,7 client checks,4 screenshot checks, the
+descriptor check and5 linked corruption checks pass; the board link passes.
+
+Imageca04b4e9bef7caecc60d15e182fc997994f8f7fc794fd54f83ffe43ecc4e1cc2
+was installed in44 directory-last sectors and its full1MiB readback matches.
+Reset was sent once; successful CDC boot observation resolved the logger error.
+Frames advanced708672 to1149760 with zero reported underruns/peripheral errors.
+The user explicitly confirms correct screen positioning at the top and bottom.
+The50ms requested view interval is unchanged. Both prior images are preserved
+privately for rollback. Physical screen offset is accepted; meter movement,
+Laydock reload and USB audio reliability are separate acceptance items. Reload
+at120-byte/20ms and48-byte/50ms pacing timed out with capture active.
