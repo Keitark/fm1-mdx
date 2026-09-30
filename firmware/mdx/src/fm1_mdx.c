@@ -1,4 +1,5 @@
 #include "fm1_mdx.h"
+#include "fm1_mdx_mix.h"
 #include <string.h>
 static void write_reg(fm1_mdx_player *p,unsigned reg,unsigned value) {
     p->registers[reg]=(uint8_t)value;
@@ -63,7 +64,7 @@ static bool pcm_event(void *user,const retrofm_mdx_pcm_command *c) {
 void fm1_mdx_stop(fm1_mdx_player *p) {
     unsigned i;
     for(i=0;i<8;i++){write_reg(p,8,i);p->live_note[i]=-1;retrofm_pcm_stop(&p->pcm,i);}
-    p->pcm_left=p->pcm_right=0;p->playing=0;
+    p->pcm_left=p->pcm_right=p->pcm_previous_left=p->pcm_previous_right=0;p->playing=0;
 }
 int fm1_mdx_load(fm1_mdx_player *p,const uint8_t *mdx,size_t n,const uint8_t *pdx,size_t pn) {
     unsigned i;
@@ -113,7 +114,6 @@ int fm1_mdx_note(fm1_mdx_player *p,unsigned midi,int down) {
     } else if(p->live_note[ch]==(int)midi) {write_reg(p,8,ch);p->live_note[ch]=-1;}
     return 0;
 }
-static int16_t clamp16(int v){return (int16_t)(v>32767?32767:v< -32768?-32768:v);}
 int fm1_mdx_render(fm1_mdx_player *p,int16_t *stereo,size_t frames) {
     size_t i;
     if(!p || !stereo || frames>FM1_MDX_BLOCK)return -1;
@@ -126,15 +126,17 @@ int fm1_mdx_render(fm1_mdx_player *p,int16_t *stereo,size_t frames) {
             if(p->error || p->sequence.ended)fm1_mdx_stop(p);
         }
         ym2151_update_one(&p->opm,buffers,1);
-        /* PDX mixer is natively 48kHz; bounded resampling to 44.1kHz. */
+        /* Interpolate the native 48kHz PCM timeline at the 44.1kHz DAC clock.
+           Holding the newest value introduced periodic skipped-sample steps. */
         p->pcm_phase+=RETROFM_PCM_OUTPUT_HZ;
         while(p->pcm_phase>=FM1_MDX_RATE) {
+            p->pcm_previous_left=p->pcm_left;p->pcm_previous_right=p->pcm_right;
             retrofm_pcm_next_frame(&p->pcm,&p->pcm_left,&p->pcm_right);
             p->pcm_phase-=FM1_MDX_RATE;
         }
         /* MAME's YM2151 bit7 is left; MDX bit6 is left. Swap FM only. */
-        stereo[2*i]=clamp16(p->right[0]/2+p->pcm_left/2);
-        stereo[2*i+1]=clamp16(p->left[0]/2+p->pcm_right/2);
+        stereo[2*i]=fm1_mdx_mix_sample(p->right[0],p->pcm_previous_left,p->pcm_left,p->pcm_phase);
+        stereo[2*i+1]=fm1_mdx_mix_sample(p->left[0],p->pcm_previous_right,p->pcm_right,p->pcm_phase);
         p->remainder+=RETROFM_PL_CLOCK_HZ;
         p->cycles+=p->remainder/FM1_MDX_RATE;p->remainder%=FM1_MDX_RATE;
     }

@@ -4,20 +4,26 @@
 #include "bridge.h"
 static unsigned fill(const fm1_uac_fifo *q){return q->wr-q->rd;}
 static void reset(fm1_uac_fifo *q){q->rd=q->wr=q->phase=q->primed=0;}
+#define RECOVERY_FRAMES 32u
+static void playback_release(fm1_uac_bridge *b) {
+    unsigned ch;
+    b->playback_ramp=0;b->playback_tail=RECOVERY_FRAMES;
+    for(ch=0;ch<2;ch++)b->playback_release[ch]=b->playback_last[ch];
+}
 void fm1_uac_stream(fm1_uac_bridge *b,unsigned direction,int on) {
     if(direction){b->in_active=!!on;reset(&b->capture);}
-    else {b->out_active=!!on;reset(&b->playback);}
+    else {b->out_active=!!on;reset(&b->playback);playback_release(b);}
 }
 static void push(fm1_uac_fifo *q,int16_t l,int16_t r) {
     if(fill(q)==FM1_UAC_FRAMES){q->rd++;q->overruns++;}
     q->data[q->wr&(FM1_UAC_FRAMES-1)][0]=l;
     q->data[q->wr&(FM1_UAC_FRAMES-1)][1]=r;q->wr++;
 }
-static void sample(fm1_uac_fifo *q,uint32_t base,int16_t out[2]) {
+static int sample(fm1_uac_fifo *q,uint32_t base,int16_t out[2]) {
     unsigned n=fill(q),ch;int correction;
     out[0]=out[1]=0;
-    if(!q->primed){if(n<256)return;q->primed=1;}
-    if(n<2){q->primed=0;q->underruns++;return;}
+    if(!q->primed){if(n<256)return 0;q->primed=1;}
+    if(n<2){q->primed=0;q->underruns++;return 0;}
     /* Bound adjustment to about1000ppm; queue error closes the clock loop.
        Never change the FM synthesis clock or allocate in an IRQ. */
     correction=(int)n-256;if(correction>128)correction=128;if(correction< -128)correction=-128;
@@ -28,6 +34,7 @@ static void sample(fm1_uac_fifo *q,uint32_t base,int16_t out[2]) {
     }
     q->phase+=(uint32_t)((int32_t)base+correction/2);
     q->rd+=q->phase>>16;q->phase&=65535;
+    return 1;
 }
 int fm1_uac_receive(fm1_uac_bridge *b,const uint8_t *p,size_t n) {
     size_t i;
@@ -43,7 +50,18 @@ void fm1_uac_dac(fm1_uac_bridge *b,int32_t *pcm,unsigned n) {
         int16_t l=clip(pcm[2*i]/256),r=clip(pcm[2*i+1]/256);
         if(b->in_active)push(&b->capture,l,r);
         pc[0]=pc[1]=0;
-        if(b->out_active)sample(&b->playback,(48000u*65536u)/44100u,pc);
+        if(b->out_active && sample(&b->playback,(48000u*65536u)/44100u,pc)) {
+            if(b->playback_ramp<RECOVERY_FRAMES)++b->playback_ramp;
+            for(ch=0;ch<2;ch++)pc[ch]=(int16_t)((int32_t)pc[ch]*(int32_t)b->playback_ramp/(int32_t)RECOVERY_FRAMES);
+            b->playback_tail=0;
+        } else {
+            if(b->playback_ramp)playback_release(b);
+            if(b->playback_tail) {
+                --b->playback_tail;
+                for(ch=0;ch<2;ch++)pc[ch]=(int16_t)((int32_t)b->playback_release[ch]*(int32_t)b->playback_tail/(int32_t)RECOVERY_FRAMES);
+            }
+        }
+        for(ch=0;ch<2;ch++)b->playback_last[ch]=pc[ch];
         for(ch=0;ch<2;ch++)pcm[2*i+ch]=(int32_t)clip((ch?r:l)+pc[ch])*256;
     }
 }

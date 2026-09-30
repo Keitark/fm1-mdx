@@ -51,6 +51,10 @@ class LinkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Power merged-global target changed: sys_low_power'):
             self.check_elf(self.corrupt('power_init', 0x3c2))
 
+    def test_lrc_destination_corruption_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'Power merged-global target changed: lrc.0'):
+            self.check_elf(self.corrupt('power_init', 0x0d4))
+
     def test_power_gateway_corruption_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'Board power gateway instructions changed'):
             self.check_elf(self.corrupt('fm1_board_power_init', 24))

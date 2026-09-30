@@ -186,3 +186,197 @@ no analog input is added. Host and linked corruption checks pass. The corrected
 184,784-byte application's SHA256 is
 `117dc6e2d2f62806ea57ff645d635fd4c9d844baedd62c7e4e124bc5caad80d3`.
 Its hardware recording verification is pending.
+
+## Current installed profile and OutRun glitch investigation (issue9)
+
+The later virtual-Line capture profile at`9fb7041` was installed with exact
+1MiB readback SHA256`414c83b57df63faa763a339d9f58230af2459b712c5d9ade8818a3a070480393`.
+Windows already exposed a valid stereo48kHz capture pin, but its endpoint was
+disabled/hidden. Enabling only the FM1 endpoint made recording work; terminal
+classification alone is not established as the cause. A30-second real capture
+contains1,440,000 stereo frames. USB recording precedes the analog master volume
+and excludes PC return. The user confirmed the demo's muted PCM drum removes
+the metronome-like click. Commercial songs and recordings remain private.
+
+Before the issue9 correction, live counters showed MDX underruns0, capture
+underruns0 and PC playback underruns2. A separate30-second input-only OutRun
+capture added no underruns in any direction. These counters cannot exclude
+late hardware DMA service or synthesis discontinuities.
+
+The MDX consumer incorrectly reset priming after a successful callback that
+consumed exactly the last64 samples. The next callback then waited for1470
+samples, creating an uncounted gap even if the producer had already supplied
+another full block. The regression now requires continuous output across that
+boundary; actual missing samples and subsequent rebuffer silence are counted
+separately. Callback timing and render/queue diagnostics are also available.
+
+Issue9 also interpolates the native48kHz PCM timeline into44.1kHz, gates UI and
+sleep using the post-render reserve, and ramps PC playback at stream starvation
+and recovery. It uses RetroFM's measured PCM/FM ratio49700/32768 with the
+existing common1/2 gain. It does not copy the separate X68Sound PCM trim into
+this different decoder. A matched60-second private OutRun host comparison
+measures PCM RMS+3.59dB, PCM peak3415 and mixed peak6424, with no clipped samples.
+This was a starting balance derived from the earlier implementation. The native
+MXDRV comparison below supersedes it; physical listening acceptance stays open.
+
+Host regressions exercise exact-empty versus genuinely starved DMA buffers,
+rebuffer accounting, delayed callbacks, signed PCM interpolation, saturation
+and nonzero PC underrun/recovery/stream-stop continuity. The linked power audit
+retains the normalized SDK hash and checks the reviewed diagnostic layout
+trace+380 and LRC/LRC/low-power+260/+272/+296, including corruption rejection.
+The user approved this candidate, and commit`9e223de` was flashed with45 verified
+sectors and exact1MiB readback SHA256
+`5ff7edf9b1e97f3821cbbcf79cc97e408b38a8e2274d55e29d6ca31d35d9acb4`.
+One reset was sent; the reset CLI's text decoding error was resolved by
+successful observation, without another reset. The pre-fix composite rollback
+remains preserved separately.
+
+OutRun was reloaded into volatile RAM with all tracks unmuted. New live counters
+confirm genuine MDX buffer underruns and rebuffering, while the USB capture
+underrun/overrun and packet-error counters remain zero. A bounded input-only capture produced1,440,000 stereo48kHz frames. Over the
+31.7-second surrounding observation interval, MDX added6,080 missing frames,
+95 rebuffer events and154,816 rebuffer-silence frames. USB capture added zero
+underruns, overruns or bad packets. A fresh240x240 completed
+screen shows PLAY / USB RAM. The first correction is not sufficient for audible
+acceptance. The old zero counter concealed gaps rather than proving headroom.
+
+Linked disassembly also proves the timing clock is `jiffies*10`, with10ms
+resolution. The first diagnostic's4ms late threshold therefore counted normal
+tick crossings. The follow-up threshold is20ms; sub-tick DMA deadlines remain
+unmeasured.
+
+The next candidate replaces per-sample software-double cubic output shaping
+with the same integer expression. All131,073 tested values from-65536 to65536
+match exactly, including the preserved upstream out-of-range behavior. A
+matched60-second OutRun render is byte-identical to the preceding candidate:
+2,646,000 frames, WAV SHA256
+`f760dcb957919c0c097f439a107df3a935b06e57ec3b71aefd2813a13ae94d46`.
+Six CTest groups, client/screenshot/descriptor checks and five linked corruption
+checks pass. The static audit needs no new instruction/layout exceptions.
+This optimization removes software floating-point work from output shaping;
+its deployment and hardware results are recorded below.
+
+## Integer output optimization installation
+
+The user approved the exact follow-up image on2026-09-30. Code at`61eb729`
+was installed with45 verified sectors and one exact1MiB readback, SHA256
+`1c671a1c09840f15d0dea5411d3cdbd04febc1dee6b9551a969f2b15e85c36e6`.
+Application SHA256 is
+`0af9e0eadf6b2fa120553c3f30d94df5d2621ed0ba7b642570a14cfe9d479f31`.
+Both earlier composite images remain saved privately. One reset was sent;
+successful serial observation resolved the known reset-log decoding error.
+Demo frames advanced543,104 to984,320 with zero underruns or peripheral errors.
+
+OutRun was reloaded into volatile RAM with all tracks unmuted. A30-second
+input-only USB capture produced1,440,000 stereo48kHz frames with peak6111 and
+no synth underruns, rebuffer events, rebuffer-silence frames, USB underruns,
+overruns or bad packets. During the same capture, the CRC-checked240x240 screen
+transfer completed and showed PLAY / USB RAM. Minimum primed fill stayed960
+frames; coarse callback maximum10ms and late count0 reflect the SDK's10ms clock,
+not a sub-tick hardware deadline measurement. Physical listening acceptance
+remains separate from these counters and the USB recording path.
+
+A subsequent120-second input-only recording produced5,760,000 stereo frames,
+peak7376 and no clipped samples. Five streaming snapshots and the final status
+show zero MDX underruns, rebuffer events or rebuffer-silence frames. USB capture
+added120,011 packets with zero underruns, overruns or malformed packets; primed
+minimum fill remained960 frames. No capture script opened PC playback. Between
+the two recordings, a separate brief PC return supplied3,700 packets and
+registered two PC playback underruns; both values stayed unchanged throughout
+the120-second test. They do not describe the MDX or USB capture buffers.
+
+## Native MXDRV balance candidate (2026-09-30)
+
+The user's listening comparison found PCM substantially louder in native
+MXDRV/X68Sound. Isolated120-second OutRun stems at44.1kHz stereo16-bit confirm
+it: installed FM1 PCM RMS325.55 versus native MXDRV1304.44 (+12.056dB), while
+FM RMS1317.53 versus2506.69 differs by5.587dB. PCM is therefore6.469dB lower
+relative to FM. Isolation is verified by recombining stems: FM1 is exact and
+MXDRV differs by at most1LSB. MXDRV resets its channel mask at Play, so reference
+isolation is applied and read back after Play.
+
+The new candidate uses PCM output gain8/5 instead of49700/65536 and keeps FM
+at1/2. Its integer product is bounded within32 bits and requires no floating
+point or64-bit division. A new120-second host render measures PCM+6.489dB,
+within0.020dB of the native MXDRV PCM/FM RMS ratio. FM-only output is byte-identical
+to the installed source; mixed peak9707 and zero clipped samples leave headroom
+for the tested song. This is OutRun balance calibration, not equivalence between
+the different emulators, filter responses or volume curves.
+
+Host6 CTests,7 client checks,3 screenshot checks and the descriptor check pass.
+The composite board link, static audit and all5 linked corruption tests pass.
+Application payload185488 bytes, SHA256
+`ae04821634c56876fd308e99a30b3d8c1c631c4f0c73e07ea85468e32d57066a`.
+Offline unit-image packaging against the observed installed baseline succeeds:
+candidate1MiB SHA256
+`06c55a3ea1310b91fff144949e6906823e697c305683d89d3979292794c51d11`.
+The user approved the exact candidate and rollback plan. The candidate was
+flashed with44 verified sectors and one matching full-image readback, reset
+once, and observed booting. The preceding image
+`1c671a1c09840f15d0dea5411d3cdbd04febc1dee6b9551a969f2b15e85c36e6`
+is retained privately as rollback. Listening acceptance FAILED: the user heard
+initially clean playback become noisy through USB audio on the PC. Playback
+was stopped. The first120-second capture was aborted before its WAV was saved;
+it is not a completed bench pass. A subsequent149.98-second incremental capture
+has peak32768 and RMS18612. A one-byte alignment change reduces these to
+peak10323 and RMS1547. Sampled buffer-error counters remained zero. This is
+strong evidence of sample alignment/order corruption in the capture chain,
+not proof of its exact origin; analog output was not evaluated for this failure.
+All recordings, songs, stems and unit images remain outside Git.
+
+## Integrated host replay of the noisy candidate (2026-09-30)
+
+`mdx_audio_replay` executes the current owner task, sequencer/FM/PCM renderer,
+2048-frame ring, actual64-frame `audio_output`, UAC target/bridge and little-endian
+packet encoder. The SDK boundaries use mocks with a10ms OS tick,64-frame DAC
+callbacks and1ms USB callbacks. Each encoded sample is independently decoded
+and checked against the maximum source magnitude, so passing buffer counters
+alone cannot conceal byte-swapped full-scale noise.
+
+Build with `python scripts/build.py host`. For a private external song:
+
+```powershell
+& firmware/mdx/build/host/Release/mdx_audio_replay.exe song.mdx song.pdx replay.wav 600 0 normal
+& firmware/mdx/build/host/Release/mdx_audio_replay.exe song.mdx song.pdx stress.wav 180 500 stress
+```
+
+Duration is1..3600 seconds; drift is-1000..1000ppm. Runs of600 seconds or longer
+queue PLAY again every360 seconds to cover song restart after natural completion.
+Stress mode seeds ring/FIFO counters near32-bit rollover, closes/reopens capture
+every15 seconds, resets the USB interfaces every61 seconds, and stalls the
+producer60ms every47 seconds. These are explicitly injected conditions.
+
+Private OutRun results against the current playback sources:
+
+| Run | Duration | Peak | Clipped samples | Synth missing / rebuffer events | USB FIFO errors |
+| --- | --- | --- | --- | --- | --- |
+| Normal,0ppm; one song restart | 600s | 10785 | 0 | 0 / 0 | 0 |
+| Normal,+500ppm | 180s | 10410 | 0 | 0 / 0 | 0 |
+| Normal,-500ppm | 180s | 10555 | 0 | 0 / 0 | 0 |
+| Stress,+500ppm | 180s | 10303 | 0 | 192 / 3 | 0 |
+| Stress,-500ppm | 180s | 10396 | 0 | 192 / 3 | 0 |
+
+Both180-second stress runs include14 stream restarts, three producer stalls
+and ring/FIFO rollover. Deliberate starvation produces counted gaps, without
+the persistent full-scale collapse. A separate600-second MSVC AddressSanitizer
+stress run reports no memory errors,49 stream restarts,12 producer stalls,
+768 missing samples/12 rebuffer events, and zero USB FIFO errors.
+
+A private positive control removes exactly one byte downstream of the modeled
+encoder at30 seconds. Its checked5-second interval changes from peak8589,
+RMS1501 and zero clipping to peak32768, RMS18210 and426 full-scale samples.
+Realigning the bytes restores peak8589/RMS1501 with zero clipping. This matches
+the observed failure pattern but is an injected transport fault, not a
+spontaneous reproduction by the firmware code.
+
+All7 CTests,7 client checks,3 screenshot checks and the descriptor check pass.
+The new CI test uses the redistributable demo for65 seconds of stress. Only host
+test sources and documentation changed; playback/USB firmware sources remain
+unchanged from935e9b7. No additional firmware was flashed for this experiment.
+
+The model does not emulate WL82 instructions, DMA, actual USB transfers, Windows
+audio drivers, or interrupt/CPU timing. Those remain possible failure locations.
+The current UAC target ignores `usb_g_iso_write` results; `tx_packets` counts
+encoder attempts before submission, and `bad_packets` concerns USB OUT input.
+Consequently, the existing status does not certify successful or correctly
+aligned USB IN transfers. Device listening acceptance remains open.

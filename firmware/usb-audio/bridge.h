@@ -12,6 +12,8 @@ typedef struct {
 typedef struct {
     fm1_uac_fifo playback,capture;
     unsigned out_active,in_active;
+    unsigned playback_ramp,playback_tail;
+    int16_t playback_last[2],playback_release[2];
     uint32_t rx_packets,tx_packets,bad_packets;
 } fm1_uac_bridge;
 void fm1_uac_stream(fm1_uac_bridge *,unsigned direction,int on);

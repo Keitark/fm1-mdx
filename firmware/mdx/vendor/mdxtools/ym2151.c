@@ -1686,6 +1686,7 @@ static void advance(struct ym2151 *chip) {
 *   '**buffers' is table of pointers to the buffers: left and right
 *   'length' is the number of samples that should be generated
 */
+#include "fm1_output.h"
 void ym2151_update_one(struct ym2151 *chip, SAMP **buffers, int length) {
 	int i;
 	signed int outl,outr;
@@ -1750,17 +1751,8 @@ void ym2151_update_one(struct ym2151 *chip, SAMP **buffers, int length) {
 
 		outl >>= FINAL_SH;
 		outr >>= FINAL_SH;
-		double outld = outl / 32767.0;
-		if(outld < -1.0) outld = 1.0;
-		else if(outld > 1.0) outld = 1.0;
-		else outld = outld - outld * outld * outld / 3;
-		double outrd = outr / 32767.0;
-		if(outrd < -1.0) outrd = 1.0;
-		else if(outrd > 1.0) outrd = 1.0;
-		else outrd = outrd - outrd * outrd * outrd / 3;
-
-		((SAMP*)bufL)[i] = (SAMP)(outld * 32767);
-		((SAMP*)bufR)[i] = (SAMP)(outrd * 32767);
+		((SAMP*)bufL)[i] = (SAMP)fm1_opm_output(outl);
+		((SAMP*)bufR)[i] = (SAMP)fm1_opm_output(outr);
 
 #ifdef USE_MAME_TIMERS
 		/* ASG 980324 - handled by real timers now */

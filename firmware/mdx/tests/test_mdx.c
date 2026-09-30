@@ -1,5 +1,6 @@
 #include "fm1_mdx.h"
 #include "fm1_mdx_usb.h"
+#include "fm1_mdx_mix.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,20 @@ static unsigned crc32(const uint8_t *b,size_t n) {
 static long long audio(unsigned blocks){unsigned i,j;long long sum=0;for(i=0;i<blocks;i++){CHECK(!fm1_mdx_render(&p,stereo,128));for(j=0;j<256;j++)sum+=abs(stereo[j]);}return sum;}
 int main(void) {
     unsigned i,n;uint8_t image[4096];char s[300];
+    /* A linear source must remain linear at fractional sample positions.
+       Also exercise negative full-scale differences without signed overflow. */
+    CHECK(fm1_mdx_mix_sample(0,0,10000,0)==0);
+    CHECK(fm1_mdx_mix_sample(0,0,10000,FM1_MDX_RATE/2)==8000);
+    CHECK(fm1_mdx_mix_sample(0,10000,0,FM1_MDX_RATE/2)==8000);
+    CHECK(fm1_mdx_mix_sample(0,-32768,32767,FM1_MDX_RATE/2)==-1);
+    CHECK(fm1_mdx_mix_sample(0,-32767,32767,FM1_MDX_RATE/2)==0);
+    CHECK(fm1_mdx_mix_sample(20000,0,0,0)==10000);
+    CHECK(fm1_mdx_mix_sample(32767,32767,32767,0)==32767);
+    CHECK(fm1_mdx_mix_sample(-32768,-32768,-32768,0)==-32768);
+    CHECK(fm1_mdx_mix_sample(0,10000,10000,0)==16000);
+    CHECK(fm1_mdx_mix_sample(0,-10000,-10000,0)==-16000);
+    CHECK(fm1_mdx_mix_sample(0,32767,32767,0)==32767);
+    CHECK(fm1_mdx_mix_sample(0,-32768,-32768,0)==-32768);
     CHECK(!fm1_mdx_load(&p,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size));
     CHECK(p.mdx.track_count==9);CHECK(audio(400)>100000);
     CHECK(fm1_mdx_mute(&p,16,1)==-1);

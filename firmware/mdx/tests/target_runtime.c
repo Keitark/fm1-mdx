@@ -92,7 +92,30 @@ static void panel_tests(void) {
     action(FM1_MDX_PLAY,0,0);CHECK(!player.mute_mask && uploaded_song);
     silence();keyboard_octave=0;memset(&control,0,sizeof(control));
 }
-int main(void){panel_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
+static void audio_boundary_tests(void) {
+    unsigned i;int32_t out[128];char diagnostics[200];
+    fm1_audio_startup_reset(&envelope);envelope.frames_left=0;envelope.gain_q7=64;
+    mdx_volume.valid=1;mdx_volume.target=64;audio_playing=primed=1;rd=0;wr=64;
+    for(i=0;i<64;i++){ring[i][0]=1000;ring[i][1]=-1000;}
+    audio_output(0,(u8 *)out,512,3);
+    CHECK(rd==wr && primed && !underruns && !rebuffer_events);
+    for(i=64;i<128;i++){ring[i][0]=2000;ring[i][1]=-2000;}wr=128;ms=2;
+    audio_output(0,(u8 *)out,512,3);
+    CHECK(primed && rd==wr && out[0]==2000*128 && out[1]==-2000*128 && !underruns);
+    ms=4;audio_output(0,(u8 *)out,512,3);
+    CHECK(!primed && underruns==64 && rebuffer_events==1 && rebuffer_frames==64);
+    ms=6;audio_output(0,(u8 *)out,512,3);CHECK(rebuffer_frames==128 && underruns==64);
+    for(i=0;i<1470;i++){ring[(wr+i)&2047][0]=3000;ring[(wr+i)&2047][1]=-3000;}wr+=1470;
+    ms=8;audio_output(0,(u8 *)out,512,3);CHECK(primed && out[0]==3000*128);
+    ms=18;audio_output(0,(u8 *)out,512,3);CHECK(!late_callbacks && callback_gap_ms==10);
+    ms=38;audio_output(0,(u8 *)out,512,3);CHECK(late_callbacks==1 && callback_gap_ms==20);
+    command("MDX TIMING");snprintf(diagnostics,sizeof(diagnostics),"%s",answer);
+    CHECK(strstr(diagnostics,"late=1") && strstr(diagnostics,"rebuffer=1"));
+    silence();ms=40;audio_output(0,(u8 *)out,512,3);CHECK(rebuffer_frames==128);
+    rd=wr=underruns=frames=callback_ms=callback_gap_ms=late_callbacks=rebuffer_events=rebuffer_frames=render_max_ms=0;
+    callback_seen=0;queue_min=2048;ms=0;memset(&mdx_volume,0,sizeof(mdx_volume));
+}
+int main(void){panel_tests();audio_boundary_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
     CHECK(opened==1 && closed==1 && key_stopped==1 && lcd_stopped==1 && timer_deleted==1);
     CHECK(!audio_enabled && !scan_enabled && !alink && !keyirq && control.quiescent && !control.running);
     CHECK(fm1_peripheral_idle());puts("PASS MDX task, stereo DMA, controls, stop/upload exclusion, disconnect continuity, complete UBOOT teardown");return 0;
