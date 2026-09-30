@@ -25,6 +25,31 @@ static void run(int ppm) {
     CHECK(!b.capture.underruns && !b.playback.underruns && !b.capture.overruns && !b.playback.overruns);
     CHECK(b.capture.wr-b.capture.rd<1024 && b.playback.wr-b.playback.rd<1024);
 }
+static void recovery(void) {
+    uint8_t p[192];int32_t pcm[2];int previous=0;unsigned i;
+    memset(&b,0,sizeof(b));fm1_uac_stream(&b,0,1);packet(p,6000,-6000);
+    for(i=0;i<8;i++)CHECK(!fm1_uac_receive(&b,p,192));
+    /* Starve nonzero PC audio. FM keeps playing, and PC fades to silence
+       in bounded steps rather than an instantaneous 6000-count jump. */
+    for(i=0;i<500;i++) {
+        pcm[0]=10000*256;pcm[1]=-10000*256;fm1_uac_dac(&b,pcm,1);
+        CHECK(abs(pcm[0]/256-10000-previous)<=188);
+        CHECK(pcm[1]==-pcm[0]);previous=pcm[0]/256-10000;
+    }
+    CHECK(b.playback.underruns==1 && !previous && !b.playback.primed);
+    for(i=0;i<8;i++)CHECK(!fm1_uac_receive(&b,p,192));
+    for(i=0;i<64;i++) {
+        pcm[0]=10000*256;pcm[1]=-10000*256;fm1_uac_dac(&b,pcm,1);
+        CHECK(abs(pcm[0]/256-10000-previous)<=188);previous=pcm[0]/256-10000;
+    }
+    CHECK(previous==6000);
+    fm1_uac_stream(&b,0,0);
+    for(i=0;i<40;i++) {
+        pcm[0]=10000*256;pcm[1]=-10000*256;fm1_uac_dac(&b,pcm,1);
+        CHECK(abs(pcm[0]/256-10000-previous)<=188);previous=pcm[0]/256-10000;
+    }
+    CHECK(!previous && b.playback.underruns==1);
+}
 int main(int argc,char **argv) {
     unsigned i,offset=0;uint8_t p[192];int32_t pcm[128];
     if(argc>1 && !strcmp(argv[1],"--descriptor")){for(i=0;i<173;i++)printf("%02x",fm1_uac_descriptor[i]);puts("");return 0;}
@@ -33,7 +58,7 @@ int main(int argc,char **argv) {
     CHECK(!fm1_uac_interface_request(1,11,1,2,0));CHECK(!fm1_uac_interface_request(1,11,2,4,0));
     CHECK(!fm1_uac_interface_request(0x21,11,1,3,0));CHECK(!fm1_uac_interface_request(1,11,1,0x103,0));
     CHECK(!fm1_uac_interface_request(1,11,1,3,65535));CHECK(!fm1_uac_interface_request(0x21,1,0,3,3));
-    run(0);run(500);run(-500);
+    recovery();run(0);run(500);run(-500);
     CHECK(fm1_uac_receive(&b,p,193)==-1 && fm1_uac_receive(&b,p,3)==-1);
     CHECK(fm1_uac_receive(&b,NULL,4)==-1 && b.bad_packets==3);
     packet(p,32767,-32768);fm1_uac_stream(&b,0,1);
@@ -42,6 +67,7 @@ int main(int argc,char **argv) {
     fm1_uac_dac(&b,pcm,64);CHECK(pcm[0]==32767*256 && pcm[1]==-32768*256);
     fm1_uac_stream(&b,0,0);fm1_uac_stream(&b,1,0);
     CHECK(fm1_uac_transmit(&b,p,192)==0 && !b.playback.primed && b.playback.wr==b.playback.rd);
-    fm1_uac_stream(&b,0,1);memset(pcm,0,sizeof(pcm));fm1_uac_dac(&b,pcm,64);CHECK(pcm[0]==0);
+    fm1_uac_stream(&b,0,1);memset(pcm,0,sizeof(pcm));fm1_uac_dac(&b,pcm,64);
+    CHECK(pcm[126]==0 && pcm[127]==0 && !b.playback.primed); /* bounded old-sample fade, no FIFO replay */
     puts("PASS duplex48k bridge, stereo/loopback isolation, +/-500ppm clock drift, malformed packets, clipping and reset");return 0;
 }

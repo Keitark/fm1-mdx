@@ -7,8 +7,8 @@ const uint8_t fm1_uac_descriptor[173]={
     10,36,1,0,1,52,0,2,3,4,
     12,36,2,1,1,1,0,2,3,0,0,0,
     9,36,3,2,1,3,0,1,0,
-    /* Virtual line input: Windows hides an embedded Synthesizer bridge from
-       ordinary recording applications. PCM still comes from the MDX synth. */
+    /* Conventional virtual line capture category. PCM comes from the MDX
+       synth; this terminal does not add an analog input. */
     12,36,2,3,3,6,0,2,3,0,0,0,
     9,36,3,4,1,1,0,3,0,
     9,4,3,0,0,1,2,0,0,

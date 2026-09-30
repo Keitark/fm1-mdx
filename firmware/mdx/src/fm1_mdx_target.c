@@ -39,7 +39,9 @@ static int keyboard_octave;
 static unsigned keyboard_slot=41,keyboard_note;
 static int16_t ring[2048][2],block[FM1_MDX_BLOCK*2];
 static uint32_t rd,wr,underruns,frames;
-static unsigned primed,audio_enabled,scan_enabled,scan_ticks;
+static uint32_t callback_ms,callback_gap_ms,late_callbacks,rebuffer_events,rebuffer_frames,render_max_ms;
+static unsigned callback_seen,queue_min=2048;
+static unsigned primed,audio_enabled,audio_playing,scan_enabled,scan_ticks;
 static uint8_t row_pixels[480];
 static fm1_screen_text screen_shown;
 static uint32_t screen_frame;
@@ -84,6 +86,13 @@ int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx
                  (long)encoders.count[0],(long)encoders.count[1],(long)encoders.count[2],(long)encoders.count[3],(long)encoders.count[4],(long)encoders.count[5],(long)encoders.count[6]);
         release(&input_lock,f);reply(ctx,out);return 1;
     }
+    if(!strcmp(s,"MDX TIMING")) {
+        char out[200];unsigned gap,late,minimum,events,missing,render;
+        f=take(&audio_lock);gap=callback_gap_ms;late=late_callbacks;minimum=queue_min;
+        events=rebuffer_events;missing=rebuffer_frames;render=render_max_ms;release(&audio_lock,f);
+        snprintf(out,sizeof(out),"MDX TIMING cb_gap_ms=%u late=%u min_fill=%u rebuffer=%u rebuffer_frames=%u render_ms=%u\n",gap,late,minimum,events,missing,render);
+        reply(ctx,out);return 1;
+    }
     f=take(&control_lock);
     result=fm1_mdx_usb_line(&upload,&io,s,now,reply,ctx);release(&control_lock,f);return result;
 }
@@ -97,16 +106,25 @@ int fm1_peripheral_event(char *out,unsigned n){(void)out;(void)n;return 0;}
 __attribute__((noinline,used))
 void fm1_display_snapshot(unsigned phase,const uint32_t *r){unsigned i;for(i=0;i<20;i++)mdx_lcd_registers[i]=r[i];mdx_lcd_phase=phase;}
 static void audio_output(void *ctx,u8 *data,int len,u8 ch) {
-    unsigned i;int32_t *out=(int32_t *)data;uint32_t available=wr-rd;
+    unsigned i,count;int32_t *out=(int32_t *)data;uint32_t available=wr-rd,now=timer_get_ms();
     (void)ctx;
     if(!data || len<=0)return;
     if(ch!=3 || len!=512){memset(data,0,(unsigned)len);audio_error=-1;return;}
-    if(!primed && available>=1470)primed=1;
+    if(callback_seen){unsigned gap=now-callback_ms;if(gap>callback_gap_ms)callback_gap_ms=gap;if(gap>=4)late_callbacks++;}
+    callback_ms=now;callback_seen=1;
+    if(!primed && available>=1470){primed=1;audio_playing=1;}
+    if(primed && available<queue_min)queue_min=available;
+    count=primed?(available<64?available:64):0;
     for(i=0;i<64;i++) {
-        if(primed && rd!=wr){out[2*i]=(int32_t)ring[rd&2047][0]*256;out[2*i+1]=(int32_t)ring[rd&2047][1]*256;rd++;}
+        if(i<count){out[2*i]=(int32_t)ring[rd&2047][0]*256;out[2*i+1]=(int32_t)ring[rd&2047][1]*256;rd++;}
         else {out[2*i]=out[2*i+1]=0;if(primed)underruns++;}
     }
-    if(primed && wr==rd)primed=0;
+    /* A completely consumed block is still successful. Unprime only when
+       a callback actually lacks samples, not when the producer can refill
+       before the next callback. The old exact-empty case inserted an
+       uncounted 33ms priming gap despite underruns=0. */
+    if(primed && count<64){primed=0;audio_playing=2;rebuffer_events++;}
+    if(!primed && audio_playing==2)rebuffer_frames+=64-count;
     {unsigned f=take(&input_lock);envelope.target_q7=mdx_volume.valid?mdx_volume.target:0;release(&input_lock,f);}
 #ifdef FM1_USB_AUDIO
     fm1_usb_audio_dac(out,64);
@@ -127,7 +145,7 @@ static void publish(void) {
     f=take(&control_lock);control.selected=player.selected;control.mutes=player.mute_mask;control.frames=fr;control.underruns=ur;control.error=(unsigned)player.error;release(&control_lock,f);
 }
 static void silence(void) {
-    unsigned f=take(&audio_lock);rd=wr=0;primed=0;release(&audio_lock,f);
+    unsigned f=take(&audio_lock);rd=wr=0;primed=0;audio_playing=0;release(&audio_lock,f);
     fm1_mdx_stop(&player);
     keyboard_slot=41;
     f=take(&control_lock);control.running=0;release(&control_lock,f);
@@ -177,7 +195,7 @@ static void action(unsigned op,unsigned a,unsigned b) {
     int rc=0;
     if(op==FM1_MDX_STOP){silence();return;}
     if(op==FM1_MDX_DEMO || op==FM1_MDX_PLAY) {
-        unsigned f=take(&audio_lock);rd=wr=0;primed=0;release(&audio_lock,f);
+        unsigned f=take(&audio_lock);rd=wr=0;primed=0;audio_playing=1;release(&audio_lock,f);
         if(op==FM1_MDX_PLAY) {
             uploaded_song=1;
             rc=fm1_mdx_load(&player,upload.bytes+12,upload.mdx_size,upload.bytes+12+upload.mdx_size,upload.pdx_size);
@@ -238,12 +256,14 @@ static void fm1_peripheral_task(void *u) {
         if(op){action(op,a,b);publish();if(op==FM1_MDX_STOP)running=0;}
         f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
         if(running && player.loaded && !audio_error && queued<=2048-FM1_MDX_BLOCK) {
+            uint32_t started=timer_get_ms(),elapsed;
             if(fm1_mdx_render(&player,block,FM1_MDX_BLOCK) || !player.playing){silence();running=0;}
             else {
                 unsigned i;f=take(&audio_lock);
                 for(i=0;i<FM1_MDX_BLOCK;i++){ring[wr&2047][0]=block[2*i];ring[wr&2047][1]=block[2*i+1];wr++;}
                 release(&audio_lock,f);
             }
+            elapsed=timer_get_ms()-started;f=take(&audio_lock);if(elapsed>render_max_ms)render_max_ms=elapsed;release(&audio_lock,f);
         }
         f=take(&input_lock);scan_rc=scan_enabled?fm1_wl82_keyscan_async_raw(&scanner,rows):FM1_NES_BUSY;release(&input_lock,f);
         if(!scan_rc) {
@@ -264,6 +284,8 @@ static void fm1_peripheral_task(void *u) {
             for(a=0;a<8;a++)if(player.live_note[a]>=0){fm1_mdx_song_write(&player,8,(uint8_t)a);ym2151_write_reg(&player.opm,8,(int)a);player.live_note[a]=-1;}
         }
         if((uint32_t)(now-last_status)>=250){last_status=now;publish();}
+        /* Rendering changes occupancy; use the live reserve for UI/sleep. */
+        f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
         if(!lcd_error && (queued>=1470 || !running)) {
             if(row==240 && (uint32_t)(now-last_ui)>=500){last_ui=now;ui_text();row=0;}
             if(row<240){lcd_error=ui_row(row++);if(row==240 && !lcd_error){f=take(&control_lock);memcpy(screen_shown,ui,sizeof(ui));if(!++screen_frame)++screen_frame;release(&control_lock,f);}}

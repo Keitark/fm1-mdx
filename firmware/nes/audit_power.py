@@ -145,7 +145,7 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
     layout=tuple(value(n)-base for n in ('lrc.0','lrc.6','sys_low_power'))
     if usb_audio:
         # Reviewed original composite and composite-with-screenshot layouts.
-        require(layout in ((224,236,260),(228,240,264)),
+        require(layout in ((224,236,260),(228,240,264),(260,272,296)),
                 'Composite audio power merged-global layout changed')
     for off,target,prefix,regbits,historical in (
         (0x0d6,'lrc.0',b'\x5a\xee',0x10,bytes.fromhex('5a ee 14 04')),
@@ -164,9 +164,20 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
             require(0<=delta<256 and delta%4==0,'Power merged-global offset outside reviewed encoding')
         require(symbols[target][1]==4,'Power merged-global object size changed')
         if off==0x0d6:
-            expected=prefix+bytes([regbits|(delta&15),delta>>4])
+            # Diagnostics link:0x20012da, r1=r8+260 (01 e1 04 81).
+            # The extended add-immediate replaces the prior small-offset
+            # encoding; exact operands still resolve to lrc.0, not a whitelist
+            # bypass for arbitrary power instructions.
             require(value('lrc.1')==value('lrc.0')+4 and value('lrc.2')==value('lrc.0')+8,
                     'Power LRC state layout changed')
+            if usb_audio and layout==(260,272,296):
+                # The former mov+preincrement-store (6 bytes) is replaced by
+                # add-immediate+store (6 bytes), with identical destination.
+                require(code_at(start+0x0d4,6)==bytes.fromhex('01 e1 04 81 98 40'),
+                        'Power merged-global target changed: lrc.0')
+                normalized[0x0d4:0x0da]=bytes.fromhex('81 16 5a ee 14 04')
+                continue
+            expected=prefix+bytes([regbits|(delta&15),delta>>4])
         else:
             # The reviewed profiles put sys_low_power at +256/+260/+264:
             # its ninth offset bit is encoded in the first opcode byte.

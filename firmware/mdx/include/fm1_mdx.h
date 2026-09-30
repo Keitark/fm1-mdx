@@ -20,7 +20,7 @@ typedef struct {
     uint8_t song_registers[256],registers[256],key_mask[8];
     uint32_t suppressed_keys;
     retrofm_mdx_result error;
-    int16_t pcm_left,pcm_right;
+    int16_t pcm_left,pcm_right,pcm_previous_left,pcm_previous_right;
     stream_sample_t left[FM1_MDX_BLOCK],right[FM1_MDX_BLOCK];
 } fm1_mdx_player;
 int fm1_mdx_load(fm1_mdx_player *,const uint8_t *,size_t,const uint8_t *,size_t);

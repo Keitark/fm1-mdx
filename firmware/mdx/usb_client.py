@@ -90,7 +90,7 @@ def send(port,data):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action',choices=('list','upload','screenshot','status','input','audio','play','stop','demo','select','mute','note'))
+    p.add_argument('action',choices=('list','upload','screenshot','status','input','audio','timing','play','stop','demo','select','mute','note'))
     p.add_argument('--port');p.add_argument('--mdx',type=Path);p.add_argument('--pdx',type=Path)
     p.add_argument('--output',type=Path,help='PNG path for screenshot (default: timestamped current-directory file)')
     p.add_argument('--track',type=int,help='1..8 for select;1..16 for mute')

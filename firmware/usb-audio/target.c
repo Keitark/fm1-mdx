@@ -71,7 +71,11 @@ void fm1_usb_audio_stop(void) {
 }
 void fm1_usb_audio_dac(int32_t *p,unsigned n){unsigned f=take();if(armed)fm1_uac_dac(&bridge,p,n);release(f);}
 void fm1_usb_audio_status(char *out,size_t n) {
-    unsigned f=take();snprintf(out,n,"MDX AUDIO rate=48000 bits=16 channels=2 out=%u in=%u rx=%u tx=%u bad=%u play_fill=%u capture_fill=%u under=%u,%u over=%u,%u\n",
-        bridge.out_active,bridge.in_active,bridge.rx_packets,bridge.tx_packets,bridge.bad_packets,bridge.playback.wr-bridge.playback.rd,bridge.capture.wr-bridge.capture.rd,
-        bridge.playback.underruns,bridge.capture.underruns,bridge.playback.overruns,bridge.capture.overruns);release(f);
+    unsigned values[11],f=take();
+    values[0]=bridge.out_active;values[1]=bridge.in_active;values[2]=bridge.rx_packets;values[3]=bridge.tx_packets;
+    values[4]=bridge.bad_packets;values[5]=bridge.playback.wr-bridge.playback.rd;values[6]=bridge.capture.wr-bridge.capture.rd;
+    values[7]=bridge.playback.underruns;values[8]=bridge.capture.underruns;values[9]=bridge.playback.overruns;values[10]=bridge.capture.overruns;
+    release(f); /* Formatting must not extend the IRQ-disabled DMA critical section. */
+    snprintf(out,n,"MDX AUDIO rate=48000 bits=16 channels=2 out=%u in=%u rx=%u tx=%u bad=%u play_fill=%u capture_fill=%u under=%u,%u over=%u,%u\n",
+        values[0],values[1],values[2],values[3],values[4],values[5],values[6],values[7],values[8],values[9],values[10]);
 }

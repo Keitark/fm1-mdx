@@ -186,3 +186,44 @@ no analog input is added. Host and linked corruption checks pass. The corrected
 184,784-byte application's SHA256 is
 `117dc6e2d2f62806ea57ff645d635fd4c9d844baedd62c7e4e124bc5caad80d3`.
 Its hardware recording verification is pending.
+
+## Current installed profile and OutRun glitch investigation (issue9)
+
+The later virtual-Line capture profile at`9fb7041` was installed with exact
+1MiB readback SHA256`414c83b57df63faa763a339d9f58230af2459b712c5d9ade8818a3a070480393`.
+Windows already exposed a valid stereo48kHz capture pin, but its endpoint was
+disabled/hidden. Enabling only the FM1 endpoint made recording work; terminal
+classification alone is not established as the cause. A30-second real capture
+contains1,440,000 stereo frames. USB recording precedes the analog master volume
+and excludes PC return. The user confirmed the demo's muted PCM drum removes
+the metronome-like click. Commercial songs and recordings remain private.
+
+Before the issue9 correction, live counters showed MDX underruns0, capture
+underruns0 and PC playback underruns2. A separate30-second input-only OutRun
+capture added no underruns in any direction. These counters cannot exclude
+late hardware DMA service or synthesis discontinuities.
+
+The MDX consumer incorrectly reset priming after a successful callback that
+consumed exactly the last64 samples. The next callback then waited for1470
+samples, creating an uncounted gap even if the producer had already supplied
+another full block. The regression now requires continuous output across that
+boundary; actual missing samples and subsequent rebuffer silence are counted
+separately. Callback timing and render/queue diagnostics are also available.
+
+Issue9 also interpolates the native48kHz PCM timeline into44.1kHz, gates UI and
+sleep using the post-render reserve, and ramps PC playback at stream starvation
+and recovery. It uses RetroFM's measured PCM/FM ratio49700/32768 with the
+existing common1/2 gain. It does not copy the separate X68Sound PCM trim into
+this different decoder. A matched60-second private OutRun host comparison
+measures PCM RMS+3.59dB, PCM peak3415 and mixed peak6424, with no clipped samples.
+This is a starting balance derived from the earlier implementation, not a new
+cross-engine calibration or physical listening acceptance.
+
+Host regressions exercise exact-empty versus genuinely starved DMA buffers,
+rebuffer accounting, delayed callbacks, signed PCM interpolation, saturation
+and nonzero PC underrun/recovery/stream-stop continuity. The linked power audit
+retains the normalized SDK hash and checks the reviewed diagnostic layout
+trace+380 and LRC/LRC/low-power+260/+272/+296, including corruption rejection.
+The correction remains unflashed until the concrete candidate is approved;
+audible glitch removal, current screen updates and real timing margins remain
+bench acceptance checks.
