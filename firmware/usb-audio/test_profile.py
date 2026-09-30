@@ -22,5 +22,5 @@ class ProfileTests(unittest.TestCase):
         for x in formats:self.assertEqual(x[3:8],bytes([1,2,2,16,1]));self.assertEqual(int.from_bytes(x[8:11],'little'),48000)
         terminals=[x for x in entries if x[1]==36 and x[2] in (2,3) and len(x) in (9,12)]
         self.assertEqual([x[3] for x in terminals],[1,2,3,4]);self.assertEqual(terminals[1][7],1);self.assertEqual(terminals[3][7],3)
-        self.assertEqual(int.from_bytes(terminals[2][4:6],'little'),0x0713) # embedded MDX synth, defined Windows KS mapping
+        self.assertEqual(int.from_bytes(terminals[2][4:6],'little'),0x0603) # virtual line input for Windows recording clients
 if __name__=='__main__':unittest.main()
