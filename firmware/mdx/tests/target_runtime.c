@@ -125,7 +125,19 @@ static void row_address_tests(void) {
     for(y=0;y<240;y++){CHECK(!ui_row(y));CHECK(lcd_y==y);}
     CHECK(lcd_first && lcd_last);
 }
-int main(void){row_address_tests();panel_tests();audio_boundary_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
+static void ui_timing_tests(void) {
+    unsigned i;control.running=1;
+    for(i=0;i<16;i++)player.meters.parts[i]=32768;
+    player.meters.stereo[0]=32768;player.meters.stereo[1]=16384;
+    ui_update(50);CHECK(ui.parts[0]==255 && ui.parts[15]==255 && ui.hold[0]==255 && ui.stereo[0]==255);
+    ui_update(400);CHECK(ui.parts[0]==153 && ui.hold[0]==255 && ui.stereo[0]==187);
+    ui_update(600);CHECK(!ui.parts[0] && ui.hold[0]==204);
+    silence();ui_update(50);
+    for(i=0;i<16;i++)CHECK(!ui.parts[i] && !ui.hold[i] && !part_motion[i].hold_ms);
+    for(i=0;i<24;i++)CHECK(!ui.spectrum[i] && !spectrum_motion[i].level_milli);
+    CHECK(!ui.stereo[0] && !ui.stereo[1]);
+}
+int main(void){row_address_tests();panel_tests();audio_boundary_tests();ui_timing_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
     CHECK(opened==1 && closed==1 && key_stopped==1 && lcd_stopped==1 && timer_deleted==1);
     CHECK(!audio_enabled && !scan_enabled && !alink && !keyirq && control.quiescent && !control.running);
     CHECK(fm1_peripheral_idle());puts("PASS MDX task, stereo DMA, controls, stop/upload exclusion, disconnect continuity, complete UBOOT teardown");return 0;

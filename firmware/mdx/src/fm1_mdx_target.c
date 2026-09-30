@@ -245,20 +245,37 @@ static void action(unsigned op,unsigned a,unsigned b) {
 }
 /* Bounded dirty-row batches. The same frozen state renders LCD and SHOT. */
 static fm1_screen_view ui;
-static void ui_update(void) {
+static fm1_meter_motion spectrum_motion[24],part_motion[16],stereo_motion[2];
+static void ui_update(uint32_t elapsed_ms) {
+    uint8_t spectrum[24]={0};
     unsigned i;fm1_screen_title(&ui,player.mdx.title.data,player.mdx.title.size);
     ui.running=(uint8_t)control.running;ui.selected=player.selected;ui.mutes=player.mute_mask;
     ui.tracks=player.mdx.track_count;ui.uploaded=(uint8_t)uploaded_song;ui.octave=(int8_t)keyboard_octave;
     ui.seconds=(uint32_t)(player.cycles/RETROFM_PL_CLOCK_HZ);
-    fm1_meters_spectrum(&player.meters,ui.spectrum);
+    fm1_meters_spectrum(&player.meters,spectrum);
+    /* MMDSP-style fast attack and short falling tails. Units span60dB:
+       FFT32dB/s, parts60dB/s, stereo40dB/s. Peak caps hold400ms,
+       then fall20dB/s. Only the owner task updates these42 envelopes. */
+    for(i=0;i<24;i++) {
+        fm1_meter_step(&spectrum_motion[i],spectrum[i],elapsed_ms,136,0,136);
+        ui.spectrum[i]=(uint8_t)(spectrum_motion[i].level_milli/1000);
+    }
     for(i=0;i<16;i++) {
         unsigned value=fm1_meters_level(player.meters.parts[i]);player.meters.parts[i]=0;
-        /*50ms frame decay, roughly60dB/sec; caps decay more slowly. */
-        ui.parts[i]=ui.parts[i]>13?ui.parts[i]-13:0;if(value>ui.parts[i])ui.parts[i]=(uint8_t)value;
-        ui.hold[i]=ui.hold[i]>4?ui.hold[i]-4:0;if(value>ui.hold[i])ui.hold[i]=(uint8_t)value;
+        fm1_meter_step(&part_motion[i],(uint8_t)value,elapsed_ms,255,400,85);
+        ui.parts[i]=(uint8_t)(part_motion[i].level_milli/1000);
+        ui.hold[i]=(uint8_t)(part_motion[i].peak_milli/1000);
     }
-    for(i=0;i<2;i++){ui.stereo[i]=fm1_meters_level(player.meters.stereo[i]);player.meters.stereo[i]=0;}
-    if(!control.running){memset(ui.spectrum,0,sizeof(ui.spectrum));memset(&player.meters,0,sizeof(player.meters));}
+    for(i=0;i<2;i++) {
+        fm1_meter_step(&stereo_motion[i],fm1_meters_level(player.meters.stereo[i]),elapsed_ms,170,0,170);
+        ui.stereo[i]=(uint8_t)(stereo_motion[i].level_milli/1000);player.meters.stereo[i]=0;
+    }
+    if(!control.running) {
+        memset(ui.spectrum,0,sizeof(ui.spectrum));memset(ui.parts,0,sizeof(ui.parts));
+        memset(ui.hold,0,sizeof(ui.hold));memset(ui.stereo,0,sizeof(ui.stereo));
+        memset(spectrum_motion,0,sizeof(spectrum_motion));memset(part_motion,0,sizeof(part_motion));
+        memset(stereo_motion,0,sizeof(stereo_motion));memset(&player.meters,0,sizeof(player.meters));
+    }
 }
 static int ui_row(unsigned y) {
     /* The stock fill overrides the init window, as the qualified NES path
@@ -331,7 +348,7 @@ static void fm1_peripheral_task(void *u) {
         f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
         if(!lcd_error && (queued>=1470 || !running)) {
             unsigned batch;
-            if(row==240 && (uint32_t)(now-last_ui)>=50){last_ui=now;ui_started=timer_get_ms();ui_update();row=0;}
+            if(row==240 && (uint32_t)(now-last_ui)>=50){uint32_t elapsed=now-last_ui;last_ui=now;ui_started=timer_get_ms();ui_update(elapsed);row=0;}
             for(batch=0;row<240 && batch<4;batch++) {
                 /* DMA waits leave IRQs enabled. Recheck reserve before each row. */
                 f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);

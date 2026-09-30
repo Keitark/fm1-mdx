@@ -20,6 +20,15 @@ final PCM group gain and stereo clipping. These are voice activity/peak meters,
 not isolated FFTs, calibrated loudness comparisons or note-on indicators. Manual
 karaoke notes are included. Decaying bars and slower peak caps aid reading.
 
+Meter motion follows the supplied MMDSP references. Attack is immediate at the
+next view update. FFT bars release at about32dB/s, FM/PCM bars at60dB/s and
+L/R peaks at40dB/s. Part caps hold400ms after a qualifying peak, then release
+at20dB/s. A lower signal does not restart the hold. These are visual tuning
+values, not measured constants from MMDSP. All envelopes use elapsed milliseconds
+and retain fractional levels, so lower or irregular LCD FPS does not stretch
+their tails. STOP clears all bars/caps. The envelopes run only in the owner task;
+they add no interrupt/timer work and do not change audio samples or scheduling.
+
 The owner task requests a new view every50ms (20Hz target). It compares rows
 against the last completed view and writes only changed rows. At most four rows
 are examined per batch, then audio synthesis/control service resumes. Audio ring
@@ -59,6 +68,9 @@ CPU/render costs, DMA behavior and the Windows driver; hardware FPS is unverifie
 
 Regression tests check FFT frequencies, silence, full scale and opposite-phase
 stereo, screenshot pixel/palette/CRC agreement, frozen captures and token bounds.
+Meter regressions check immediate attack, distinct release rates, peak hold and
+retrigger, identical motion at20FPS/12FPS/irregular intervals, a long pause, and
+the actual target's STOP clearing behavior.
 The replay checks every committed view against modeled LCD RAM, including dirty
 rows. A10-second demo WAV remains byte-identical before/after meter instrumentation.
 The board link retains startup, power and recovery audits; exact reviewed LTO
