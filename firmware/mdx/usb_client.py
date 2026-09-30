@@ -2,6 +2,7 @@
 import argparse
 from pathlib import Path
 import struct
+import re
 import sys
 import time
 import zlib
@@ -9,6 +10,41 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'tools/jieli-wl82'))
 from usb_diag_client import exchange,IDENTITY
 LIMIT=192*1024
 HELLO='FM1DIAG/1 MDX-KARAOKE/1 RAM-UPLOAD UBOOT=SERIAL COMMIT=BLOCKED'
+
+def screenshot_png(data):
+    if len(data)!=14400:raise ValueError('Screenshot must contain240x240 packed2-bit pixels')
+    if any((b>>shift)&3==3 for b in data for shift in (6,4,2,0)):
+        raise ValueError('Screenshot palette index rejected')
+    def chunk(kind,payload):
+        return struct.pack('>I',len(payload))+kind+payload+struct.pack('>I',zlib.crc32(kind+payload))
+    rows=b''.join(b'\0'+data[y*60:(y+1)*60] for y in range(240))
+    return (b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',240,240,2,3,0,0,0))+
+            chunk(b'PLTE',bytes([8,8,8,0,255,255,255,255,0]))+
+            chunk(b'IDAT',zlib.compress(rows,9))+chunk(b'IEND',b''))
+
+def capture_screenshot(port):
+    header=exchange(port,'MDX SHOT BEGIN')
+    match=re.fullmatch(r'OK MDX SHOT ([0-9a-f]{8}) 240 240 I2 ([0-9a-f]{8}) frame=([0-9]+)',header)
+    if not match:raise RuntimeError('Unexpected screenshot format')
+    token,crc,frame=match.groups();data=bytearray()
+    try:
+        for offset in range(0,14400,96):
+            answer=exchange(port,f'MDX SHOT READ {token} {offset:08x}')
+            prefix=f'MDX SHOT DATA {token} {offset:08x} '
+            if not answer.startswith(prefix) or len(answer)!=len(prefix)+192:
+                raise RuntimeError('Screenshot token/offset/length mismatch')
+            encoded=answer[len(prefix):]
+            if not re.fullmatch(r'[0-9a-f]{192}',encoded):raise RuntimeError('Malformed screenshot pixels')
+            data.extend(bytes.fromhex(encoded))
+        if zlib.crc32(data)!=int(crc,16):raise RuntimeError('Screenshot CRC mismatch; image not written')
+        png=screenshot_png(data)
+    except BaseException:
+        try:exchange(port,f'MDX SHOT END {token}')
+        except Exception:pass
+        raise
+    if exchange(port,f'MDX SHOT END {token}')!='OK MDX SHOT END':
+        raise RuntimeError('Unexpected screenshot completion')
+    return png,int(frame)
 
 def confirm_identity(port):
     # HELLO is read-only; retry only this handshake while CDC RX settles.
@@ -54,8 +90,9 @@ def send(port,data):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action',choices=('list','upload','status','input','audio','play','stop','demo','select','mute','note'))
+    p.add_argument('action',choices=('list','upload','screenshot','status','input','audio','play','stop','demo','select','mute','note'))
     p.add_argument('--port');p.add_argument('--mdx',type=Path);p.add_argument('--pdx',type=Path)
+    p.add_argument('--output',type=Path,help='PNG path for screenshot (default: timestamped current-directory file)')
     p.add_argument('--track',type=int,help='1..8 for select;1..16 for mute')
     p.add_argument('--note',type=int,help='MIDI13..108');p.add_argument('--on',type=int,choices=(0,1),default=1)
     a=p.parse_args();data=None
@@ -81,6 +118,10 @@ def main():
         # Hardware can otherwise discard the first command after port opening.
         time.sleep(1)
         confirm_identity(port)
+        if a.action=='screenshot':
+            png,frame=capture_screenshot(port)
+            path=(a.output or Path(time.strftime('fm1-screen-%Y%m%d-%H%M%S.png'))).resolve()
+            path.write_bytes(png);print(f'Saved240x240 frame {frame} to {path}');return
         if data is not None:print(send(port,data));return
         command='MDX '+a.action.upper()
         if a.action=='select':command+=f' {a.track-1}'

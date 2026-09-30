@@ -14,6 +14,7 @@
 #endif
 #include "fm1_mdx.h"
 #include "fm1_mdx_usb.h"
+#include "fm1_screen.h"
 #include "fm1_wl82_keyscan.h"
 #include "fm1_volume.h"
 #include "peripheral_logic.h"
@@ -40,11 +41,21 @@ static int16_t ring[2048][2],block[FM1_MDX_BLOCK*2];
 static uint32_t rd,wr,underruns,frames;
 static unsigned primed,audio_enabled,scan_enabled,scan_ticks;
 static uint8_t row_pixels[480];
+static fm1_screen_text screen_shown;
+static uint32_t screen_frame;
+static fm1_screen screen_transfer;
 static volatile uint32_t mdx_lcd_registers[20],mdx_lcd_phase;
 static volatile int lcd_error,key_error,audio_error;
 static int scan_timer,uploaded_song;
 static unsigned take(spinlock_t *l){unsigned f;local_irq_save(f);arch_spin_lock(l);return f;}
 static void release(spinlock_t *l,unsigned f){arch_spin_unlock(l);local_irq_restore(f);}
+static int screen_snapshot(void *u,fm1_screen_text text,uint32_t *frame) {
+    unsigned f=take(&control_lock);int rc;(void)u;
+    rc=!control.available || control.shutdown || lcd_error || !screen_frame;
+    if(!rc){memcpy(text,screen_shown,sizeof(screen_shown));*frame=screen_frame;}
+    release(&control_lock,f);return rc;
+}
+static void screen_yield(void *u){(void)u;os_time_dly(1);}
 static uint32_t now_us(void *u){(void)u;return timer_get_ms()*1000u;}
 static int idle(void *u){(void)u;return control.available && !control.running && !control.request;}
 static int request(void *u,unsigned op,unsigned a,unsigned b) {
@@ -60,6 +71,7 @@ static void status(void *u,char *out,size_t n) {
 }
 int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx) {
     fm1_mdx_usb_io io={0,idle,request,status};int result;unsigned f;
+    if(fm1_screen_command(&screen_transfer,screen_snapshot,screen_yield,0,s,now,reply,ctx))return 1;
 #ifdef FM1_USB_AUDIO
     if(!strcmp(s,"MDX AUDIO")){char out[224];fm1_usb_audio_status(out,sizeof(out));reply(ctx,out);return 1;}
 #endif
@@ -75,7 +87,7 @@ int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx
     f=take(&control_lock);
     result=fm1_mdx_usb_line(&upload,&io,s,now,reply,ctx);release(&control_lock,f);return result;
 }
-void fm1_mdx_usb_reset(void){unsigned f=take(&control_lock);fm1_mdx_usb_abort(&upload);release(&control_lock,f);}
+void fm1_mdx_usb_reset(void){unsigned f=take(&control_lock);fm1_mdx_usb_abort(&upload);release(&control_lock,f);screen_transfer.active=0;}
 void fm1_mdx_usb_tick(uint32_t now){unsigned f=take(&control_lock);fm1_mdx_usb_timeout(&upload,now);release(&control_lock,f);}
 void fm1_peripheral_cancel(void){unsigned f=take(&control_lock);if(!control.quiescent){control.request=FM1_MDX_STOP;control.shutdown=1;}release(&control_lock,f);}
 void fm1_peripheral_session_cancel(void){fm1_mdx_usb_reset();} /* Standalone playback survives disconnect. */
@@ -175,15 +187,8 @@ static void action(unsigned op,unsigned a,unsigned b) {
     else if(op==FM1_MDX_NOTE)rc=fm1_mdx_note(&player,a,(int)b);
     if(rc){unsigned f=take(&control_lock);control.error=(unsigned)rc;release(&control_lock,f);}
 }
-/* Compact original 3x5 font. UI renders one scanline per refill opportunity. */
-static uint16_t glyph(char c) {
-    static const uint16_t digits[10]={0x7b6f,0x2492,0x73e7,0x73cf,0x5bc9,0x79cf,0x79ef,0x7249,0x7bef,0x7bcf};
-    if(c>='0'&&c<='9')return digits[c-'0'];
-    if(c=='B')return 0x7bae;
-    if(c=='C')return 0x7927;
-    switch(c){case 'A':return 0x2bed;case 'D':return 0x6b6e;case 'E':return 0x79e7;case 'F':return 0x79e4;case 'I':return 0x7497;case 'K':return 0x5bad;case 'L':return 0x4927;case 'M':return 0x7fed;case 'N':return 0x7b6d;case 'O':return 0x7b6f;case 'P':return 0x7be4;case 'R':return 0x7bad;case 'S':return 0x79cf;case 'T':return 0x7492;case 'U':return 0x5b6f;case 'X':return 0x5aad;case '-':return 0x01c0;default:return 0;}
-}
-static char ui[6][40];
+/* UI renders one scanline per refill opportunity. */
+static fm1_screen_text ui;
 static void ui_text(void) {
     unsigned i;snprintf(ui[0],40,"FM1 MDX %s",control.running?"PLAY":"STOP");
     snprintf(ui[1],40,"%s",uploaded_song?"USB RAM":"FLASH DEMO");
@@ -193,15 +198,10 @@ static void ui_text(void) {
     snprintf(ui[5],40,"PLAY STOP  OCT %d",keyboard_octave);
 }
 static int ui_row(unsigned y) {
-    unsigned x,line=y/24,gy=(y%24)/3;
     uint8_t col[4]={0,0,0,239},rows[4]={0,(uint8_t)(40+y),0,(uint8_t)(40+y)};
     /* y+40 can exceed255; set the high bytes explicitly. */
     rows[0]=rows[2]=(uint8_t)((40+y)>>8);
-    for(x=0;x<240;x++) {
-        unsigned gx=(x%12)/3,character=x/12;uint16_t c=0x0841;
-        if(line<6 && gy<5 && gx<3 && character<strlen(ui[line]) && (glyph(ui[line][character])&(1u<<(14-gy*3-gx))))c=line==2?0xffe0:0x07ff;
-        row_pixels[2*x]=(uint8_t)(c>>8);row_pixels[2*x+1]=(uint8_t)c;
-    }
+    fm1_screen_row(ui,y,row_pixels);
     {uint8_t cmd=0x2a;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,col,4))return -1;cmd=0x2b;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,rows,4))return -1;cmd=0x2c;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,row_pixels,480))return -1;}
     return 0;
 }
@@ -261,7 +261,7 @@ static void fm1_peripheral_task(void *u) {
         if((uint32_t)(now-last_status)>=250){last_status=now;publish();}
         if(!lcd_error && (queued>=1470 || !running)) {
             if(row==240 && (uint32_t)(now-last_ui)>=500){last_ui=now;ui_text();row=0;}
-            if(row<240){lcd_error=ui_row(row++);}
+            if(row<240){lcd_error=ui_row(row++);if(row==240 && !lcd_error){f=take(&control_lock);memcpy(screen_shown,ui,sizeof(ui));if(!++screen_frame)++screen_frame;release(&control_lock,f);}}
         }
         wdt_clear();if(queued>=1470 || !running || audio_error)os_time_dly(1);
     }

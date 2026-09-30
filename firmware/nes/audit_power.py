@@ -142,6 +142,11 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
     # these three RAM operands, not the power sequence. Validate destinations
     # against their symbols before restoring historical encodings for hashing.
     base=value('ota_status')
+    layout=tuple(value(n)-base for n in ('lrc.0','lrc.6','sys_low_power'))
+    if usb_audio:
+        # Reviewed original composite and composite-with-screenshot layouts.
+        require(layout in ((224,236,260),(228,240,264)),
+                'Composite audio power merged-global layout changed')
     for off,target,prefix,regbits,historical in (
         (0x0d6,'lrc.0',b'\x5a\xee',0x10,bytes.fromhex('5a ee 14 04')),
         (0x104,'lrc.6',b'\xd0\xec',0x80,bytes.fromhex('d0 ec 81 05')),
@@ -149,8 +154,12 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
     ):
         delta=value(target)-base
         if usb_audio:
-            require(delta=={0x0d6:224,0x104:236,0x3c0:260}[off],
-                    'Composite audio power merged-global layout changed')
+            require(delta%4==0,'Composite audio power state alignment changed')
+        elif usb_only and delta==256:
+            # Screenshot CDC link: reviewed sys_low_power store d1 ec 81 30
+            # at power_init+0x3c0, with LRC globals at+220/+232.
+            require(off==0x3c0 and layout==(220,232,256),
+                    'Screenshot CDC power merged-global layout changed')
         else:
             require(0<=delta<256 and delta%4==0,'Power merged-global offset outside reviewed encoding')
         require(symbols[target][1]==4,'Power merged-global object size changed')
@@ -159,7 +168,7 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
             require(value('lrc.1')==value('lrc.0')+4 and value('lrc.2')==value('lrc.0')+8,
                     'Power LRC state layout changed')
         else:
-            # The reviewed composite layout puts sys_low_power at +260:
+            # The reviewed profiles put sys_low_power at +256/+260/+264:
             # its ninth offset bit is encoded in the first opcode byte.
             expected=bytes([prefix[0]|(delta>>8),prefix[1]])+bytes([regbits|1|(delta&15),((delta&255)>>4)|(0x30 if off==0x3c0 else 0)])
         require(code_at(start+off,4)==expected,'Power merged-global target changed: '+target)
