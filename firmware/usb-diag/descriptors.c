@@ -3,7 +3,7 @@
 /* Private bench identity, inherited Jieli SDK VID/PID pair, NOT a newly
  * assigned/public VID. No chip/flash serial or key is exposed. */
 #ifdef FM1_USB_AUDIO
-const u8 fm1_usb_device_descriptor[]={18,1,0,2,0xef,2,1,64,0x54,0x36,0x55,0x51,1,2,1,2,0,1};
+const u8 fm1_usb_device_descriptor[]={18,1,0,2,0xef,2,1,64,0x54,0x36,0x55,0x51,2,2,1,2,0,1};
 #else
 const u8 fm1_usb_device_descriptor[]={18,1,0,2,2,2,1,64,0x54,0x36,0x55,0x51,0,2,1,2,0,1};
 #endif

@@ -39,6 +39,11 @@ milliseconds of buffering; actual end-to-end latency and conversion quality
 are not measured. This initial profile does not claim professional converter
 performance. There is still one synth task and one analog audio owner.
 
+The MDX recording source is declared as the embedded Synthesizer terminal
+type0x0713. Windows maps that defined type to its synthesizer pin category;
+the original undefined input terminal failed to produce a recording endpoint
+on the first device test. See[Microsoft's pin mapping](https://learn.microsoft.com/en-us/windows-hardware/drivers/audio/pin-category-property).
+
 Read streaming counters after installation using the actual CDC port:
 
 ```powershell
