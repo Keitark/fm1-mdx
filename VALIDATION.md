@@ -617,3 +617,11 @@ advancing10200448 to10411328, zero synth/peripheral errors and zero underruns.
 The first Ray Force display reading is28.7FPS; callback gap10ms, late0,
 rebuffer0, missing rebuffer frames0, render maximum10ms. This is bounded live
 measurement, not proof of indefinite USB stability or subjective MMDSP identity.
+
+A follow-up Ray Force reading at completed frame9966 reports30.0FPS, with audio
+frames16032960 to16235264 advancing, zero underruns/rebuffers/late callbacks
+and no peripheral errors. The live SHOT at frame7481 was retrieved and visually
+inspected:32 spectrum bands,16 inline FM/PCM parts, embedded BY VEYRLEN credit,
+correct240x240 layout. This observes logical renderer output, not panel RGB444
+colour fidelity. Private screenshot stays outside Git. Source review is tracked
+in draft PR#17; subjective physical meter/audio acceptance remains open.
