@@ -75,12 +75,13 @@ There is no firmware flasher or stock-layout packager in this repository.
 
 Our [source bootloader work](firmware/bootloader/README.md) now includes an
 SDK-independent, host-tested application validation and handoff core. Target
-startup, flash access, recovery and public image packaging remain unimplemented;
+hardware startup, flash access, recovery and public image packaging remain unimplemented;
 it is not a bootable replacement loader. The [offline SDK comparison](BOOTLOADER_STUDY.md)
 records why the available vendor user-boot source cannot link on its own.
-The [clean-lab boot project](firmware/bootlab/README.md) starts with an isolated
-validation module and synthetic host scenarios; it does not use device backups,
-SDK binaries or the provisional handoff ABI.
+The [clean-lab boot project](firmware/bootlab/README.md) includes isolated
+validation, synthetic host scenarios and an offline linked entry/stack/BSS
+scaffold. It does not use device backups, SDK binaries or the provisional
+handoff ABI. Linking this scaffold does not establish ROM boot compatibility.
 
 An optional composite USB Audio Class1 + CDC profile adds computer playback
 through FM1 and MDX recording to the computer at48kHz stereo16-bit PCM:

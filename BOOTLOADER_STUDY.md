@@ -6,8 +6,10 @@ The existing MDX firmware candidate and preserved device rollback are separate.
 
 For the subsequent public-release requirement, see our
 [source bootloader implementation](firmware/bootloader/README.md). Its original
-validation/handoff core does not use the missing archive. It is not a linked
-target loader; the study results below still describe the vendor build attempt.
+validation/handoff core does not use the missing archive. The separate
+[clean lab](firmware/bootlab/README.md) now links an original entry/stack/BSS
+inspection scaffold, with no ROM-entry or hardware acceptance. The study
+results below still describe the vendor build attempt.
 
 ## Inputs and build result
 

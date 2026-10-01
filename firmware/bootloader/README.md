@@ -5,8 +5,10 @@ firmware project. **It cannot boot or update a device yet.** The implemented
 piece is application validation and preparation of the application handoff.
 It uses no vendor archive, stock image, unit backup, device I/O, or SDK header.
 It is not linked into the player and does not change the installed firmware.
-The [clean-lab step 1](../bootlab/README.md) separately builds only the portable
-validation module, excluding this directory's provisional handoff implementation.
+The [clean-lab project](../bootlab/README.md) separately builds portable
+validation and an offline linked entry/stack/BSS scaffold, excluding this
+directory's provisional handoff implementation. That scaffold does not
+establish the ROM-entry ABI or initialize hardware.
 
 The current working assumption is that the public player may retain its pinned
 Jieli SDK and compiler dependencies. Replacing the bootloader alone does not
@@ -71,14 +73,15 @@ New-Item -ItemType Directory -Force build/boot-policy-target | Out-Null
 
 The reviewed compiler produces an object with no undefined symbols, including
 no hidden `memcpy`/`memset` dependency. This is **object compilation only**;
-there is no target reset entry, linked bootloader, or flashable bank.
+this directory does not supply a target reset entry or flashable bank. The
+separate lab can link an inspection scaffold, not a complete bootloader.
 
 ## Remaining work for a complete public firmware release
 
 | Piece | Current status | Required evidence |
 |---|---|---|
 | Validation and handoff policy | Source implemented; host tested; WL82 object compiles | Integrate with actual target adapter |
-| ROM-to-loader entry and RAM layout | Unimplemented | Reset calling convention, reserved RAM, SSP/SP and loader/linker layout |
+| ROM-to-loader entry and RAM layout | Offline lab scaffold linked; ROM compatibility unqualified | Reset calling convention, actual reserved RAM, stack capacity and inherited state |
 | Clock, IRQ and cache startup | Unimplemented | Exact WL82 initialization and inherited ROM-state requirements |
 | Flash reads and application XIP mapping | Unimplemented | SFC setup, decoded-byte access and verified mapping/cache behavior |
 | Local board metadata | Unimplemented | Validated flash header, chip identity and calibration acquisition |
