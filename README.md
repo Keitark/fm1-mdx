@@ -81,7 +81,8 @@ python scripts/build.py firmware --usb-audio
 ```
 
 The separately built candidate is in `build/target-audio`. Host and link checks
-pass; it has not been flashed or qualified on hardware. See
+pass. The USB packet/lifecycle candidate is now flashed with bounded MDX-to-PC
+capture checks; complete Windows/OBS and analog qualification remain open. See
 [USB_AUDIO.md](USB_AUDIO.md) for routing, conversion and bench checks.
 
 ## USB song loading

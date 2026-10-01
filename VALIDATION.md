@@ -520,3 +520,34 @@ linked corruption checks pass. Both board profiles relink with unchanged
 application bytes. Prepared99bb92c full image eee4038f18ddc1e38a68ef4ed3b2b818d3fdc50e2a5d597edce945e3f1f39a8e
 is unchanged and remains unflashed; its private original package and rollback
 are preserved. This follow-up adds only host coverage and documentation.
+
+### 2026-10-01 USB candidate installation and Ray Force bench
+
+The user requested installing the connected device. Candidate99bb92c, full image
+eee4038f18ddc1e38a68ef4ed3b2b818d3fdc50e2a5d597edce945e3f1f39a8e,
+was written through the existing protected updater. All47 application sectors
+and one full1MiB readback match. Boot/configuration protection remains intact;
+c9810a47 remains the private rollback. No replacement bootloader was installed.
+
+One reset was issued. The helper's known UTF8 log-decoding error was resolved
+by successful CDC boot observation without repeating reset. The protected
+session is idle/unblocked, with the new image as verified baseline and no
+reset/observation pending. Demo playback progressed with zero underruns.
+
+A6-second48kHz stereo16-bit WinMM input recording contains288000 frames and
+nonzero audio. RAYFOR1.MDX and its named RAYFOR.PDX then uploaded successfully:
+194663 bundle bytes,117.922 seconds, CRC/offset acknowledgements accepted.
+PLAY succeeded, running/ready and zero synth/peripheral errors. Uploaded songs
+remain volatile. Panel/encoder controls were used during subsequent playback.
+
+Reopened capture completed89.97 seconds /4318560 frames of Ray Force, exceeding
+the earlier75.62-second stall point. Peak10402, zero clipped samples. Concurrent
+and post-capture CDC diagnostics respond: zero synth underruns/rebuffers/late
+callbacks, bad USB packets, capture underruns and capture overflows. This is
+one bounded recording, not complete-song or repeated OBS/reconnect acceptance.
+
+Meter/full-view refresh remains below its20Hz target: later live readings are
+7.2,7.6 and9.6FPS, following15.6-19.0 readings near transfer completion. No LCD
+error is reported. This is a separate display-performance limitation and does
+not establish MMDSP-equivalent redraw frequency. Internal audible output and
+reference-motion acceptance remain unverified.

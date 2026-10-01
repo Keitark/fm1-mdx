@@ -202,3 +202,21 @@ This confirms volume control progress, not subjective audible acceptance.
 The part's thin line is configured velocity and intentionally persists until
 that parameter changes; only spectrum caps are timed holds. Reference-motion
 acceptance and capture-active USB/CDC reliability remain open.
+
+## 2026-10-01 meter redraw timing review
+
+The USB lifecycle candidate99bb92c is now installed/readback-verified. Ray Force
+uploaded and a89.97-second USB recording completed with CDC progress and zero
+reported audio errors. Later display readings fall to7.2-9.6 completed views
+per second. The requested20Hz redraw is not achieved in these busy sections.
+See[VALIDATION.md](VALIDATION.md) for the bounded audio/flash evidence.
+
+The reference [MAIN.s](https://github.com/gaolay/MMDSP/blob/master/src/MAIN.s)
+calls LEVELM_DISP and SPEANA_DISP in its repeating foreground loop. Its interrupt
+handler separately calls LEVELM_GENS and SPEANA_GENS for decay. INIT.s selects
+TimerA/raster/VDISP/TimerD interrupt paths. This is not a fixed20Hz meter redraw
+cap, and the supplied video's exact effective rate remains unmeasured.
+FM1 currently consumes events and advances the elapsed-time envelopes only when
+starting the next frozen LCD view. Thus matching counter rules does not make
+its redraw/update scheduling identical to MMDSP. This timing gap is tracked
+separately from the successfully completed bounded USB capture.
