@@ -52,6 +52,19 @@ target_compile_definitions(mdx_audio_replay PRIVATE FM1_MDX_PLAYER=1 FM1_KEYSCAN
 target_link_libraries(mdx_audio_replay PRIVATE fm1_mdx fm1_uac)
 add_test(NAME mdx_audio_replay_stress COMMAND mdx_audio_replay --demo unused
   audio-replay-demo.wav 65 500 stress)
+add_executable(mdx_audio_replay444 tests/audio_replay.c tests/audio_replay_usb.c
+  ../usb-diag/peripheral_logic.c ../nes/src/fm1_stock_keys.c
+  ../nes/src/fm1_volume.c ../nes/src/fm1_audio_queue.c)
+target_include_directories(mdx_audio_replay444 PRIVATE ../usb-diag ../usb-diag/tests ../nes/include ../nes/boot ../usb-audio)
+target_compile_definitions(mdx_audio_replay444 PRIVATE FM1_MDX_PLAYER=1 FM1_KEYSCAN_IRQ=1 FM1_KEYSCAN_PACED=1 FM1_KEYSCAN_DMA2=1 FM1_VOLUME_TEST=1 FM1_MDX_LCD_RGB444=1 FM1_MDX_LCD_BAUD=1)
+target_link_libraries(mdx_audio_replay444 PRIVATE fm1_mdx fm1_uac)
+add_test(NAME mdx_audio_replay_rgb444 COMMAND mdx_audio_replay444 --demo unused
+  audio-replay-rgb444.wav 65 500 normal)
+foreach(SPI_BAUD IN ITEMS 1 3)
+  add_executable(lcd_profile_${SPI_BAUD} tests/lcd_profile.c)
+  target_compile_definitions(lcd_profile_${SPI_BAUD} PRIVATE FM1_MDX_PLAYER=1 FM1_LCD_STOCK_DMA=1 FM1_LCD_STOCK_FILL=1 FM1_LCD_STOCK_SEQUENCE=1 FM1_MDX_LCD_RGB444=1 FM1_MDX_LCD_BAUD=${SPI_BAUD})
+  add_test(NAME mdx_lcd_profile_${SPI_BAUD} COMMAND lcd_profile_${SPI_BAUD})
+endforeach()
 
 # Actual scanner driver: quantized-clock watchdog regression, not a stub.
 add_executable(keyscan_clock_tests tests/keyscan_clock.c

@@ -44,8 +44,8 @@ source's standard/integrating display rules and mathematical level tables:
   Equal/lower arrivals do not restart the hold. Part velocity lines do not fall
   with their activity pulse. STOP clears both plots and their lines.
 
-Logical ticks run at60Hz in the owner task, accumulating elapsed milliseconds;
-LCD redraw is requested at20Hz. No new IRQ/timer is added. This reproduces the
+Logical ticks run at55.45Hz in the owner task, accumulating fractional elapsed
+time independently of the requested30Hz LCD redraw. No new IRQ/timer is added. This reproduces the
 source's counter rules, but does not establish exact timing of the supplied
 X68000 video: the original vector/display mode and interrupt frequency are not
 known. FM1 displays completed snapshots at its achievable LCD rate. This is not
@@ -73,8 +73,10 @@ is parsed once on load rather than on every refresh.
 Only rows changed from the last complete view are rendered/written. Row checks
 compare displayed thresholds, cap positions and relevant text fields, without
 hashes or a second rasterization. Four-row batches return to audio/control work;
-LCD writes require at least1470 queued frames. The requested50ms view interval,
-stock panel/pins/clock and synchronous DMA with IRQs enabled remain unchanged.
+LCD writes require at least1470 queued frames. Views are requested at30Hz;
+stock panel/pins and synchronous DMA with IRQs enabled remain. Optional
+RGB444/15MHz/30MHz profiles are described below; baseline builds keep the
+existing12MHz/RGB565 format.
 No full pixel framebuffer is added. Screenshot snapshots remain immutable and
 match completed LCD views, including credit-scroll position.
 
@@ -86,7 +88,7 @@ replay view is compared against modeled physical LCD RAM at zero row offset.
 The10-second demo WAV is byte-identical before/after these changes:
 SHA256 b55f9ef31d89665937ef51e52185a7c44d949a8b5f59c59cbce7a6a46bee47db.
 
-The180-second privateLAY0_V replay at+500ppm completes3598 modeled views
+The earlier20Hz privateLAY0_V replay at+500ppm completes3598 modeled views
 (19.99FPS),127262 row writes and736258 skipped rows, with zero missing audio
 frames, rebuffers or USB FIFO errors. All14 parts used by this song show repeated
 rises/falls; the remaining two PCM parts are idle. This400us/row wire-cost model
@@ -220,3 +222,52 @@ FM1 currently consumes events and advances the elapsed-time envelopes only when
 starting the next frozen LCD view. Thus matching counter rules does not make
 its redraw/update scheduling identical to MMDSP. This timing gap is tracked
 separately from the successfully completed bounded USB capture.
+
+## 2026-10-02 MMDSP cadence and LCD throughput
+
+The referenced conversation `MMDSPの行進速度` recommends approximately55.45Hz
+for the normal X68000 display mode. Verified [MAIN.s](https://github.com/gaolay/MMDSP/blob/master/src/MAIN.s)
+processes status/note attacks in the foreground and decay in VDISP_MAIN;
+[INIT.s](https://github.com/gaolay/MMDSP/blob/master/src/INIT.s) selects vertical-sync,
+raster, VDISP or TimerD fallback. This is a mode-dependent animation cadence,
+not a universal foreground-loop FPS. The nominal rate is corroborated by the
+[MAME X68000 video source](https://github.com/mamedev/mame/blob/master/src/mame/sharp/x68k_v.cpp).
+
+The user chose30FPS for LCD views. Envelopes now retain a fractional55.45Hz
+phase independently of30Hz requests.20 seconds produces exactly1109 ticks.
+Source sensitivity and peak counters stay in ticks: part sensitivity60,
+spectrum60-tick hold (approximately1.082s), six-tick falling cap while nonzero
+and two-tick fall after the bar empties. Golden byte traces verify default
+[_LEVEL.s](https://github.com/gaolay/MMDSP/blob/master/src/_LEVEL.s) velocity
+behavior: max((velocity>>2)-4,0), velocity marker, note-on retrigger, held byte
+counter decay and alternating tick decay after note-off. This is equivalent
+envelope behavior for matching inputs; driver polling, velocity extraction
+and physical redraw are not claimed identical to an original X68000.
+
+Live meter state progresses on the owner task's10ms-quantized clock even during
+an incomplete LCD transfer. Frozen LCD/SHOT views remain immutable. Overdue
+requests coalesce. Dirty-row preparation quantizes meters once per view;
+clean rows no longer consume the four-write batch allowance. Each physical
+write still rechecks1470 queued audio frames. Row addresses remain0..239.
+
+Selectable RGB444 and15/30MHz synchronous MDX profiles change only pixel format
+and SPI divider after existing startup/fill. CPU/PLL/LSB clocks are unchanged;
+faster profiles require the existing60MHz LSB source. Default builds retain
+12MHz/RGB565. The user reports flawless NES30MHz playback; MDX performance
+needs separate bench measurement. Build the selected profile with:
+
+```powershell
+$env:FM1_SDK_DIR='F:/dev/fm1/references/source/fw-AC79_AIoT_SDK'
+python scripts/build.py firmware --usb-audio --lcd-rgb444 --lcd-spi 30
+```
+
+COLMOD53 selects serial RGB444. Two pixels pack as R0G0/B0R1/G1B1,360 rather
+than480 bytes per row, saving25% of pixel traffic. SHOT retains the logical
+indexed palette; panel channel precision is four bits. The [ST7789V specification](https://dl.espressif.com/dl/schematics/ST7789V_SPEC_V1.0.pdf)
+documents this serial format in8.8.41 and COLMOD in9.1.32; it does not identify
+the exact FM1 module or electrically qualify30MHz.
+
+`MDX DISPLAY` now distinguishes target_fps100=3000, meter_hz100=5545,
+accumulated meter_ticks and measured completed-view fps10. Earlier20FPS/60Hz
+descriptions above document prior builds. Exact validation/hashes are in
+VALIDATION.md.

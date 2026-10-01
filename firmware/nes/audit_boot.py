@@ -227,6 +227,9 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
             # Packet staging link: trace0x1c4e474 = ota_status+420; reviewed
             # wrapper store0x200276c d1 ec 07 1a, same46-byte wrapper/marker.
             if usb_audio:encodings.update({420:'d1 ec 07 1a'})
+            # Cadence/dirty-row link: trace0x1c4e478 = ota_status0x1c4e2d0
+            # +424. Reviewed store0x2002768 d1 ec 0b 1a; same46-byte wrapper.
+            if usb_audio:encodings.update({424:'d1 ec 0b 1a'})
             require(delta in encodings,'USB trace merged-global offset changed: '+str(delta))
             struct.pack_into('<I',expected_wrapper,4,value('ota_status'))
             expected_wrapper[14:16]=bytes.fromhex(encodings[delta])

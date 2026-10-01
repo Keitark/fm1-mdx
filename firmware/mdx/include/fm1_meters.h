@@ -26,16 +26,21 @@ typedef struct {
 } fm1_meter_motion;
 void fm1_meter_step(fm1_meter_motion *,uint8_t input,uint32_t elapsed_ms,
                     unsigned release_per_s,unsigned hold_ms,unsigned peak_per_s);
-typedef struct {uint32_t level_milli,remainder_ms;uint8_t step,counter,off_phase;} fm1_part_motion;
+/* Nominal X68000 31kHz VDISP cadence. Keep the fractional tick phase;
+   rounding every tick to18ms would drift. This is not the LCD's scan rate. */
+#define FM1_METER_HZ100 5545u
+#define FM1_METER_PHASE_SCALE 100000u
+unsigned fm1_meter_ticks(uint32_t *phase,uint32_t elapsed_ms);
+typedef struct {uint32_t level_milli,tick_phase;uint8_t step,counter,off_phase;} fm1_part_motion;
 /* A note retriggers an activity pulse. It decays while held; note-off is faster.
    No continuous peak input refills this envelope. */
 void fm1_part_step(fm1_part_motion *,unsigned triggered,uint8_t onset,
                    uint8_t volume,unsigned held,uint32_t elapsed_ms);
 typedef struct {
-    uint32_t level_milli,peak_milli,remainder_ms;
+    uint32_t level_milli,peak_milli,tick_phase;
     uint8_t step,target,counter,peak,peak_count;
 } fm1_note_motion;
-/* Standard/integrating note-spectrum behavior at60 logical ticks/s.
+/* Standard/integrating note-spectrum behavior at55.45 logical ticks/s.
    Original interrupt frequency depends on X68000 display/vector mode. */
 void fm1_note_step(fm1_note_motion *,uint32_t energy,uint32_t elapsed_ms);
 #endif

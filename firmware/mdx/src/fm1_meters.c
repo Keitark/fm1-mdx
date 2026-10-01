@@ -18,6 +18,14 @@ void fm1_meter_step(fm1_meter_motion *m,uint8_t input,uint32_t elapsed_ms,
     if(m->peak_milli<m->level_milli)m->peak_milli=m->level_milli;
 }
 static unsigned meter_steps(uint8_t v){return (v*28u+254)/255;}
+unsigned fm1_meter_ticks(uint32_t *phase,uint32_t elapsed_ms) {
+    uint32_t time;
+    /* A long stopped interval expires all tails; bound32-bit multiplication. */
+    if(elapsed_ms>=60000){*phase=0;return 0;}
+    time=*phase+elapsed_ms*FM1_METER_HZ100;
+    *phase=time%FM1_METER_PHASE_SCALE;
+    return time/FM1_METER_PHASE_SCALE;
+}
 static unsigned decay_tick(unsigned *counter,unsigned level,unsigned speed) {
     unsigned old=*counter;*counter=(old-level)&255u;
     if(old>level)return level;
@@ -27,10 +35,9 @@ static unsigned decay_tick(unsigned *counter,unsigned level,unsigned speed) {
 void fm1_part_step(fm1_part_motion *m,unsigned triggered,uint8_t onset,
                    uint8_t volume,unsigned held,uint32_t elapsed_ms) {
     unsigned ticks,counter=m->counter,level=m->step,limit=meter_steps(volume);
-    if(elapsed_ms>=60000){level=0;m->remainder_ms=0;}
+    if(elapsed_ms>=60000){level=0;m->tick_phase=0;}
     else {
-        uint32_t time=m->remainder_ms+elapsed_ms*60u;m->remainder_ms=time%1000;
-        for(ticks=time/1000;ticks && level;ticks--) {
+        for(ticks=fm1_meter_ticks(&m->tick_phase,elapsed_ms);ticks && level;ticks--) {
             if(held)level=decay_tick(&counter,level,60);
             else {if(!m->off_phase)level--;m->off_phase^=1;}
         }
@@ -53,7 +60,7 @@ void fm1_note_step(fm1_note_motion *m,uint32_t energy,uint32_t elapsed_ms) {
     if(elapsed_ms>=60000){memset(m,0,sizeof(*m));level=counter=0;elapsed_ms=0;}
     if(energy>65535)energy=65535;
     if(energy){unsigned target=note_level(energy+note_half[level]);if(target>=level)m->target=(uint8_t)target;}
-    {uint32_t time=m->remainder_ms+elapsed_ms*60u;m->remainder_ms=time%1000;ticks=time/1000;}
+    ticks=fm1_meter_ticks(&m->tick_phase,elapsed_ms);
     while(ticks--) {
         if(m->target>level){unsigned difference=m->target-level;level+=(difference+1)/2;
             if(level>=m->target){m->target=0;counter=0;}

@@ -47,13 +47,16 @@ static void text(uint8_t *r,unsigned y,int x,int top,const char *s,unsigned scal
 }
 enum {PLOT_HEIGHT=49,PLOT_STEPS=28,SPECTRUM_TOP=79,PART_TOP=164};
 static unsigned steps(uint8_t level){return (level*PLOT_STEPS+254u)/255u;}
-static unsigned plot_color(uint8_t level,uint8_t cap,unsigned d,unsigned muted) {
-    unsigned amount=steps(level),marker=steps(cap),height=(marker*PLOT_HEIGHT+PLOT_STEPS-1)/PLOT_STEPS;
+static unsigned prepared_color(unsigned amount,unsigned height,unsigned d,unsigned muted) {
     unsigned unit=d*PLOT_STEPS/PLOT_HEIGHT,color=3;
     if(unit<amount)color=muted?15:unit<9?(d&1?9:10):unit<19?(d&1?10:11):(d&1?11:14);
     /* MMDSP text palette1: RGB5(10,10,21), a blue-violet marker. */
     if(height && d==height-1)color=muted?15:13;
     return color;
+}
+static unsigned marker_height(uint8_t cap){return (steps(cap)*PLOT_HEIGHT+PLOT_STEPS-1)/PLOT_STEPS;}
+static unsigned plot_color(uint8_t level,uint8_t cap,unsigned d,unsigned muted) {
+    return prepared_color(steps(level),marker_height(cap),d,muted);
 }
 static void label_copy(char *out,size_t capacity,const char *start,size_t n) {
     while(n && *start==' '){start++;n--;}
@@ -124,6 +127,17 @@ void fm1_screen_row(const fm1_screen_view *v,unsigned y,uint8_t out[480]) {
     uint8_t r[240];unsigned x;fm1_screen_indices(v,y,r);
     for(x=0;x<240;x++){uint16_t c=fm1_screen_palette[r[x]];out[2*x]=(uint8_t)(c>>8);out[2*x+1]=(uint8_t)c;}
 }
+void fm1_screen_row444(const fm1_screen_view *v,unsigned y,uint8_t out[360]) {
+    uint8_t r[240];unsigned x;fm1_screen_indices(v,y,r);
+    /* Two pixels per three bytes: R0G0 B0R1 G1B1. Every row is pair aligned.
+       Pack directly from palette indices; no intermediate565 pixel buffer. */
+    for(x=0;x<240;x+=2) {
+        unsigned a=fm1_screen_palette[r[x]],b=fm1_screen_palette[r[x+1]],n=x*3/2;
+        out[n]=(uint8_t)(((a>>8)&0xf0)|((a>>7)&15));
+        out[n+1]=(uint8_t)(((a<<3)&0xf0)|((b>>12)&15));
+        out[n+2]=(uint8_t)(((b>>3)&0xf0)|((b>>1)&15));
+    }
+}
 int fm1_screen_row_changed(const fm1_screen_view *a,const fm1_screen_view *b,unsigned y) {
     /* Conservative field dependencies: a false result guarantees identical
        pixels. No second rasterization, hash collisions or framebuffer needed. */
@@ -150,6 +164,29 @@ int fm1_screen_row_changed(const fm1_screen_view *a,const fm1_screen_view *b,uns
     }
     if(y>=222 && y<229)return a->selected!=b->selected || a->mutes!=b->mutes || a->octave!=b->octave;
     return 0;
+}
+static void dirty_plot(const fm1_screen_view *a,const fm1_screen_view *b,unsigned part,uint8_t rows[240]) {
+    unsigned i,d,top=part?PART_TOP:SPECTRUM_TOP,count=part?16:32;
+    for(i=0;i<count;i++) {
+        unsigned ma=part?((a->mutes>>i)&1):0,mb=part?((b->mutes>>i)&1):0;
+        unsigned la=steps(part?a->parts[i]:a->spectrum[i]),lb=steps(part?b->parts[i]:b->spectrum[i]);
+        unsigned ha=marker_height(part?a->hold[i]:a->spectrum_hold[i]),hb=marker_height(part?b->hold[i]:b->spectrum_hold[i]);
+        if(la==lb && ha==hb && ma==mb)continue;
+        for(d=0;d<PLOT_HEIGHT;d++) {
+            unsigned y=top+PLOT_HEIGHT-1-d;
+            if(!rows[y] && prepared_color(la,ha,d,ma)!=prepared_color(lb,hb,d,mb))rows[y]=1;
+        }
+    }
+}
+void fm1_screen_dirty_rows(const fm1_screen_view *a,const fm1_screen_view *b,uint8_t rows[240]) {
+    unsigned y;
+    for(y=0;y<240;y++) {
+        if((y>=SPECTRUM_TOP && y<SPECTRUM_TOP+PLOT_HEIGHT) || (y>=PART_TOP && y<PART_TOP+PLOT_HEIGHT))rows[y]=0;
+        else rows[y]=(uint8_t)fm1_screen_row_changed(a,b,y);
+    }
+    dirty_plot(a,b,0,rows);
+    if(a->selected!=b->selected)memset(rows+PART_TOP,1,PLOT_HEIGHT);
+    else dirty_plot(a,b,1,rows);
 }
 static int hex8(const char *s,uint32_t *v) {
     unsigned i;*v=0;

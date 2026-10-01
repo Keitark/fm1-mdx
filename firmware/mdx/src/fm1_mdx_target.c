@@ -46,7 +46,7 @@ static unsigned callback_seen,queue_min=2048;
 static unsigned primed,audio_enabled,audio_playing,scan_enabled,scan_ticks;
 static uint8_t row_pixels[480];
 static fm1_screen_view screen_shown;
-static uint32_t ui_rows,ui_skipped,ui_max_ms,ui_fps10,ui_epoch,ui_epoch_frames;
+static uint32_t ui_rows,ui_skipped,ui_max_ms,ui_fps10,ui_epoch,ui_epoch_frames,ui_ticks;
 static uint32_t screen_frame;
 static fm1_screen screen_transfer;
 static volatile uint32_t mdx_lcd_registers[20],mdx_lcd_phase;
@@ -110,10 +110,10 @@ int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx
         release(&input_lock,f);reply(ctx,out);return 1;
     }
     if(!strcmp(s,"MDX DISPLAY")) {
-        char out[200];uint32_t frame,fps,rows,skipped,maximum;unsigned f=take(&control_lock);
-        frame=screen_frame;fps=ui_fps10;rows=ui_rows;skipped=ui_skipped;maximum=ui_max_ms;release(&control_lock,f);
-        snprintf(out,sizeof(out),"MDX DISPLAY frame=%lu fps10=%lu rows=%lu skipped=%lu max_ms=%lu target_fps=20\n",
-            (unsigned long)frame,(unsigned long)fps,(unsigned long)rows,(unsigned long)skipped,(unsigned long)maximum);
+        char out[224];uint32_t frame,fps,rows,skipped,maximum,ticks;unsigned f=take(&control_lock);
+        frame=screen_frame;fps=ui_fps10;rows=ui_rows;skipped=ui_skipped;maximum=ui_max_ms;ticks=ui_ticks;release(&control_lock,f);
+        snprintf(out,sizeof(out),"MDX DISPLAY frame=%lu fps10=%lu rows=%lu skipped=%lu max_ms=%lu target_fps100=%u meter_hz100=%u meter_ticks=%lu\n",
+            (unsigned long)frame,(unsigned long)fps,(unsigned long)rows,(unsigned long)skipped,(unsigned long)maximum,FM1_SCREEN_HZ100,FM1_METER_HZ100,(unsigned long)ticks);
         reply(ctx,out);return 1;
     }
     if(!strcmp(s,"MDX TIMING")) {
@@ -246,41 +246,44 @@ static void action(unsigned op,unsigned a,unsigned b) {
     if(rc){unsigned f=take(&control_lock);control.error=(unsigned)rc;release(&control_lock,f);}
 }
 /* Bounded dirty-row batches. The same frozen state renders LCD and SHOT. */
-static fm1_screen_view ui;
+static fm1_screen_view ui,ui_live;
+static uint8_t ui_dirty[240];
 static fm1_note_motion spectrum_motion[32];
 static fm1_part_motion part_motion[16];
 static uint32_t ui_elapsed_ms;
 static void ui_update(uint32_t elapsed_ms) {
+    /* Live envelopes must advance even while a previous LCD view is in flight.
+       ui is a separate immutable transfer snapshot, also used by SHOT. */
     uint8_t volume[16],onset[16];uint16_t held,triggers;
     unsigned i;
-    if(ui_title_dirty){fm1_screen_title(&ui,player.mdx.title.data,player.mdx.title.size);ui_title_dirty=0;ui_elapsed_ms=0;memset(spectrum_motion,0,sizeof(spectrum_motion));memset(part_motion,0,sizeof(part_motion));}
+    if(ui_title_dirty){fm1_screen_title(&ui_live,player.mdx.title.data,player.mdx.title.size);ui_title_dirty=0;ui_elapsed_ms=0;memset(spectrum_motion,0,sizeof(spectrum_motion));memset(part_motion,0,sizeof(part_motion));}
     ui_elapsed_ms+=elapsed_ms;
-    {unsigned width=(unsigned)strlen(ui.credit)*6,overflow=width>224?width-224:0;
+    {unsigned width=(unsigned)strlen(ui_live.credit)*6,overflow=width>224?width-224:0;
      if(overflow){unsigned phase=(ui_elapsed_ms/100)%(2*overflow+40);
-        ui.credit_scroll=(uint16_t)(phase<20?0:phase<20+overflow?phase-20:phase<40+overflow?overflow:2*overflow+40-phase);
-     }else ui.credit_scroll=0;}
-    ui.running=(uint8_t)control.running;ui.selected=player.selected;ui.mutes=player.mute_mask;
-    ui.tracks=player.mdx.track_count;ui.uploaded=(uint8_t)uploaded_song;ui.octave=(int8_t)keyboard_octave;
-    ui.seconds=(uint32_t)(player.cycles/RETROFM_PL_CLOCK_HZ);
+        ui_live.credit_scroll=(uint16_t)(phase<20?0:phase<20+overflow?phase-20:phase<40+overflow?overflow:2*overflow+40-phase);
+     }else ui_live.credit_scroll=0;}
+    ui_live.running=(uint8_t)control.running;ui_live.selected=player.selected;ui_live.mutes=player.mute_mask;
+    ui_live.tracks=player.mdx.track_count;ui_live.uploaded=(uint8_t)uploaded_song;ui_live.octave=(int8_t)keyboard_octave;
+    ui_live.seconds=(uint32_t)(player.cycles/RETROFM_PL_CLOCK_HZ);
     /* Event spectrum with independently held/falling maximum lines. No FFT
        or per-sample part tap. The task advances all envelopes by elapsed time. */
     for(i=0;i<32;i++) {
         fm1_note_step(&spectrum_motion[i],player.meters.note_energy[i],elapsed_ms);
         player.meters.note_energy[i]=0;
-        ui.spectrum[i]=(uint8_t)(spectrum_motion[i].level_milli/1000);
-        ui.spectrum_hold[i]=(uint8_t)(spectrum_motion[i].peak_milli/1000);
+        ui_live.spectrum[i]=(uint8_t)(spectrum_motion[i].level_milli/1000);
+        ui_live.spectrum_hold[i]=(uint8_t)(spectrum_motion[i].peak_milli/1000);
     }
     triggers=fm1_mdx_part_activity(&player,volume,onset,&held);
     for(i=0;i<16;i++) {
         fm1_part_step(&part_motion[i],(triggers>>i)&1,onset[i],volume[i],(held>>i)&1,elapsed_ms);
-        ui.parts[i]=(uint8_t)(part_motion[i].level_milli/1000);
-        ui.hold[i]=volume[i];
+        ui_live.parts[i]=(uint8_t)(part_motion[i].level_milli/1000);
+        ui_live.hold[i]=volume[i];
     }
     memset(player.meters.stereo,0,sizeof(player.meters.stereo));
     if(!control.running) {
-        memset(ui.spectrum,0,sizeof(ui.spectrum));memset(ui.parts,0,sizeof(ui.parts));
-        memset(ui.spectrum_hold,0,sizeof(ui.spectrum_hold));
-        memset(ui.hold,0,sizeof(ui.hold));memset(ui.stereo,0,sizeof(ui.stereo));
+        memset(ui_live.spectrum,0,sizeof(ui_live.spectrum));memset(ui_live.parts,0,sizeof(ui_live.parts));
+        memset(ui_live.spectrum_hold,0,sizeof(ui_live.spectrum_hold));
+        memset(ui_live.hold,0,sizeof(ui_live.hold));memset(ui_live.stereo,0,sizeof(ui_live.stereo));
         memset(spectrum_motion,0,sizeof(spectrum_motion));memset(part_motion,0,sizeof(part_motion));
         memset(&player.meters,0,sizeof(player.meters));
     }
@@ -289,18 +292,24 @@ static int ui_row(unsigned y) {
     /* The stock fill overrides the init window, as the qualified NES path
        already does: visible rows are0..239, with no extra40-row shift. */
     uint8_t col[4]={0,0,0,239},rows[4]={0,(uint8_t)y,0,(uint8_t)y};
-    if(screen_frame && !fm1_screen_row_changed(&screen_shown,&ui,y)){ui_skipped++;return 0;}
+#ifdef FM1_MDX_LCD_RGB444
+    fm1_screen_row444(&ui,y,row_pixels);
+#define MDX_ROW_BYTES 360u
+#else
     fm1_screen_row(&ui,y,row_pixels);
+#define MDX_ROW_BYTES 480u
+#endif
     ui_rows++;
-    {uint8_t cmd=0x2a;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,col,4))return -1;cmd=0x2b;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,rows,4))return -1;cmd=0x2c;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,row_pixels,480))return -1;}
+    {uint8_t cmd=0x2a;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,col,4))return -1;cmd=0x2b;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,rows,4))return -1;cmd=0x2c;if(fm1_display_write(0,&cmd,1)||fm1_display_write(1,row_pixels,MDX_ROW_BYTES))return -1;}
     return 0;
 }
 __attribute__((noinline,used))
 static void fm1_peripheral_task(void *u) {
-    struct iis_platform_data pd;unsigned f;uint32_t last_ui=0,last_status=0,changed=0,ui_started=0;unsigned row=240;
+    struct iis_platform_data pd;unsigned f;uint32_t last_meter=0,last_status=0,changed=0,ui_started=0,view_phase=0,meter_phase=0;unsigned row=240,view_due=1;
     uint64_t candidate=0,stable=0;int32_t encoder=0;
     (void)u;memset(&pd,0,sizeof(pd));
     lcd_error=fm1_display_test_init();
+    if(!lcd_error)lcd_error=fm1_display_mdx_stream_start();
     bit_clr_ie(IRQ_SPI2_IDX,0);key_error=fm1_wl82_keyscan_async_start(&scanner,0,now_us);
     fm1_volume_start(&mdx_volume);
     if(!key_error) {
@@ -315,6 +324,7 @@ static void fm1_peripheral_task(void *u) {
     if(!audio_error){audio_enabled=1;request_irq(IRQ_ALNK_IDX,3,fm1_test_alink_isr,0);iis_channel_on(8,0);}
     f=take(&control_lock);control.available=1;control.running=1;control.last_panel=-1;release(&control_lock,f);
     action(FM1_MDX_DEMO,0,0);
+    last_meter=timer_get_ms(); /* Exclude blocking panel startup from meter time. */
     for(;;) {
         unsigned op,a,b,running,queued,closing;uint32_t now=timer_get_ms();uint8_t rows[11];int scan_rc;
         f=take(&control_lock);op=control.request;a=control.a;b=control.b;control.request=0;
@@ -352,16 +362,36 @@ static void fm1_peripheral_task(void *u) {
             for(a=0;a<8;a++)if(player.live_note[a]>=0){fm1_mdx_song_write(&player,8,(uint8_t)a);ym2151_write_reg(&player.opm,8,(int)a);player.meter_keys[a]=0;player.live_note[a]=-1;}
         }
         if((uint32_t)(now-last_status)>=250){last_status=now;publish();}
+        /* SDK time is quantized to10ms. Keep fractional VDISP phase across
+           those ticks; coalesce overdue LCD requests instead of catch-up draws.
+           Meter/event processing stays with this single synth owner. */
+        now=timer_get_ms();
+        if(now!=last_meter || ui_title_dirty || op) {
+            uint32_t elapsed=now-last_meter;
+            /*30 LCD requests/s,55.45 envelope ticks/s. Keep both remainders. */
+            if(elapsed>=60000){view_phase=0;view_due=1;}
+            else {view_phase+=elapsed*FM1_SCREEN_HZ100;if(view_phase>=FM1_METER_PHASE_SCALE){view_due=1;view_phase%=FM1_METER_PHASE_SCALE;}}
+            last_meter=now;ui_ticks+=fm1_meter_ticks(&meter_phase,elapsed);
+            ui_update(elapsed);
+        }
         /* Rendering changes occupancy; use the live reserve for UI/sleep. */
         f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
         if(!lcd_error && (queued>=1470 || !running)) {
             unsigned batch;
-            if(row==240 && (uint32_t)(now-last_ui)>=50){uint32_t elapsed=now-last_ui;last_ui=now;ui_started=timer_get_ms();ui_update(elapsed);row=0;}
-            for(batch=0;row<240 && batch<4;batch++) {
-                /* DMA waits leave IRQs enabled. Recheck reserve before each row. */
-                f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
-                if(running && queued<1470)break;
-                lcd_error=ui_row(row++);if(lcd_error)break;
+            if(row==240 && view_due) {
+                ui=ui_live;view_due=0;ui_started=timer_get_ms();row=0;
+                if(screen_frame)fm1_screen_dirty_rows(&screen_shown,&ui,ui_dirty);
+                else memset(ui_dirty,1,sizeof(ui_dirty));
+            }
+            for(batch=0;row<240 && batch<4;) {
+                /* Clean rows do not consume the four physical-write budget. */
+                if(!ui_dirty[row]){ui_skipped++;row++;}
+                else {
+                    /* DMA waits leave IRQs enabled. Recheck reserve before each row. */
+                    f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
+                    if(running && queued<1470)break;
+                    lcd_error=ui_row(row++);batch++;if(lcd_error)break;
+                }
                 if(row==240) {
                     uint32_t elapsed=timer_get_ms()-ui_started;
                     f=take(&control_lock);screen_shown=ui;if(!++screen_frame)++screen_frame;
