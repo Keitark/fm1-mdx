@@ -595,3 +595,25 @@ this exact candidate and requested RAYFOR1.MDX/RAYFOR.PDX upload/play afterward.
 
 Hardware acceptance is separate from the host/model results above. See the
 following deployment entry for the actual flash/boot/upload outcome.
+
+### Approved30MHz/RGB444 installation and Ray Force
+
+Implementation commit b287389 was installed through the existing protected
+session. All47 directory-last sectors and one full1MiB readback match approved
+image4059dbd24bbe3d80794152a0140ab83cf1cc50fdcb15fff3052b9740b73b4f44.
+Installed eee4038f... remains preserved privately as rollback. No replacement
+bootloader was written.
+
+One reset was sent. The helper's known UTF8 log-decoding error occurred after
+the reset; successful CDC observation resolved it without another reset.
+The user also confirmed boot. COM5 reports profileMDX-KARAOKE/1 with frames
+754880 to1196480 advancing and no underruns. The helper is idle/unblocked,
+new image verified as baseline, with no reset/observation pending.
+
+The demo reports30.0 completed FPS. RAYFOR1.MDX and its corresponding RAYFOR.PDX
+uploaded successfully through CRC/offset-acknowledged volatile RAM transfer;
+PLAY was acknowledged. Subsequent status shows running/ready, mute0000, frames
+advancing10200448 to10411328, zero synth/peripheral errors and zero underruns.
+The first Ray Force display reading is28.7FPS; callback gap10ms, late0,
+rebuffer0, missing rebuffer frames0, render maximum10ms. This is bounded live
+measurement, not proof of indefinite USB stability or subjective MMDSP identity.

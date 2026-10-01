@@ -44,8 +44,8 @@ source's standard/integrating display rules and mathematical level tables:
   Equal/lower arrivals do not restart the hold. Part velocity lines do not fall
   with their activity pulse. STOP clears both plots and their lines.
 
-Logical ticks run at60Hz in the owner task, accumulating elapsed milliseconds;
-LCD redraw is requested at20Hz. No new IRQ/timer is added. This reproduces the
+Logical ticks run at55.45Hz in the owner task, accumulating fractional elapsed
+time independently of the requested30Hz LCD redraw. No new IRQ/timer is added. This reproduces the
 source's counter rules, but does not establish exact timing of the supplied
 X68000 video: the original vector/display mode and interrupt frequency are not
 known. FM1 displays completed snapshots at its achievable LCD rate. This is not
@@ -73,8 +73,10 @@ is parsed once on load rather than on every refresh.
 Only rows changed from the last complete view are rendered/written. Row checks
 compare displayed thresholds, cap positions and relevant text fields, without
 hashes or a second rasterization. Four-row batches return to audio/control work;
-LCD writes require at least1470 queued frames. The requested50ms view interval,
-stock panel/pins/clock and synchronous DMA with IRQs enabled remain unchanged.
+LCD writes require at least1470 queued frames. Views are requested at30Hz;
+stock panel/pins and synchronous DMA with IRQs enabled remain. Optional
+RGB444/15MHz/30MHz profiles are described below; baseline builds keep the
+existing12MHz/RGB565 format.
 No full pixel framebuffer is added. Screenshot snapshots remain immutable and
 match completed LCD views, including credit-scroll position.
 
@@ -86,7 +88,7 @@ replay view is compared against modeled physical LCD RAM at zero row offset.
 The10-second demo WAV is byte-identical before/after these changes:
 SHA256 b55f9ef31d89665937ef51e52185a7c44d949a8b5f59c59cbce7a6a46bee47db.
 
-The180-second privateLAY0_V replay at+500ppm completes3598 modeled views
+The earlier20Hz privateLAY0_V replay at+500ppm completes3598 modeled views
 (19.99FPS),127262 row writes and736258 skipped rows, with zero missing audio
 frames, rebuffers or USB FIFO errors. All14 parts used by this song show repeated
 rises/falls; the remaining two PCM parts are idle. This400us/row wire-cost model
