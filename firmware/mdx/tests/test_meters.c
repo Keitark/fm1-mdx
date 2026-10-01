@@ -5,6 +5,35 @@
 #include <string.h>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 static fm1_meters m;
+/* Golden default-sensitivity byte traces from _LEVEL.s:
+   pulse at27; subtract level from counter60; key-off alternates each tick. */
+static void velocity_trace_tests(void) {
+    fm1_part_motion held={0},off={0};unsigned i;
+    static const uint8_t levels[]={27,27,26,26,25,25,24,24,24,23,23,22};
+    static const uint8_t counters[]={33,6,39,13,47,22,57,33,9,45,22,59};
+    fm1_part_step(&held,1,245,245,1,0);off=held;
+    for(i=0;i<sizeof(levels);i++) {
+        /* Cumulative ceil((tick+1)*100000/5545), one interrupt per step. */
+        unsigned current=((i+1)*100000u+5544)/5545,previous=(i*100000u+5544)/5545;
+        fm1_part_step(&held,0,0,245,1,current-previous);
+        fm1_part_step(&off,0,0,245,0,current-previous);
+        CHECK(held.step==levels[i] && held.counter==counters[i]);
+        CHECK(off.step==27-(i+2)/2);
+    }
+}
+static void cadence_tests(void) {
+    uint32_t phase=0,jitter=0;unsigned ticks=0,i;
+    CHECK(!fm1_meter_ticks(&phase,18) && phase==99810);
+    CHECK(fm1_meter_ticks(&phase,1)==1 && phase==5355);
+    phase=0;CHECK(fm1_meter_ticks(&phase,1000)==55 && phase==45000);
+    CHECK(fm1_meter_ticks(&phase,1000)==55 && phase==90000);
+    CHECK(fm1_meter_ticks(&phase,1000)==56 && phase==35000);
+    /*20s gives exactly1109 ticks; SDK10ms chunks have no cadence drift. */
+    phase=0;CHECK(fm1_meter_ticks(&phase,20000)==1109 && !phase);
+    for(i=0;i<2000;i++)ticks+=fm1_meter_ticks(&jitter,10);
+    CHECK(ticks==1109 && jitter==phase);
+    CHECK(!fm1_meter_ticks(&phase,UINT32_MAX) && !phase);
+}
 static void event_tests(void) {
     fm1_part_motion regular={0},slow,jitter,off,trace={0};fm1_note_motion spectrum={0},split={0};
     uint8_t bands[32];unsigned i;const unsigned intervals[]={17,83,120,280,500};
@@ -17,12 +46,12 @@ static void event_tests(void) {
     fm1_part_step(&off,0,0,245,0,1000);CHECK(!off.level_milli);
     /* Source-derived default sensitivity60: 27,27,27,26 over3 ticks. */
     fm1_part_step(&trace,1,245,245,1,0);CHECK(trace.step==27 && trace.counter==60);
-    fm1_part_step(&trace,0,0,245,1,17);CHECK(trace.step==27 && trace.counter==33);
-    fm1_part_step(&trace,0,0,245,1,17);CHECK(trace.step==27 && trace.counter==6);
-    fm1_part_step(&trace,0,0,245,1,16);CHECK(trace.step==26 && trace.counter==39);
+    fm1_part_step(&trace,0,0,245,1,19);CHECK(trace.step==27 && trace.counter==33);
+    fm1_part_step(&trace,0,0,245,1,18);CHECK(trace.step==27 && trace.counter==6);
+    fm1_part_step(&trace,0,0,245,1,18);CHECK(trace.step==26 && trace.counter==39);
     fm1_part_step(&regular,1,36,245,1,50);CHECK(regular.step==4); /* Lower note retriggers. */
     fm1_part_step(&regular,0,0,9,1,0);CHECK(regular.step==1); /* Volume marker limits bar. */
-    fm1_part_step(&regular,0,0,245,1,UINT32_MAX);CHECK(!regular.level_milli && !regular.remainder_ms);
+    fm1_part_step(&regular,0,0,245,1,UINT32_MAX);CHECK(!regular.level_milli && !regular.tick_phase);
     memset(&m,0,sizeof(m));fm1_meters_note(&m,69,127);
     CHECK(m.note_energy[18]==127 && m.note_energy[17]==94 && m.note_energy[16]==39 && m.note_energy[14]==31 && m.note_energy[13]==7);
     fm1_meters_note_spectrum(&m,bands);CHECK(bands[18]==12*255/28);
@@ -33,20 +62,20 @@ static void event_tests(void) {
     CHECK(bands[0]==12*255/28 && bands[31]==12*255/28);
     memset(&m,0,sizeof(m));fm1_meters_note(&m,0,127);fm1_meters_note(&m,UINT32_MAX,127);fm1_meters_note(&m,69,0);
     for(i=0;i<32;i++)CHECK(!m.note_energy[i]);
-    fm1_note_step(&spectrum,127,17);CHECK(spectrum.step==6 && spectrum.peak==6 && spectrum.peak_count==59);
-    fm1_note_step(&spectrum,0,17);CHECK(spectrum.step==9);
-    fm1_note_step(&spectrum,0,16);CHECK(spectrum.step==11);
+    fm1_note_step(&spectrum,127,19);CHECK(spectrum.step==6 && spectrum.peak==6 && spectrum.peak_count==59);
+    fm1_note_step(&spectrum,0,18);CHECK(spectrum.step==9);
+    fm1_note_step(&spectrum,0,18);CHECK(spectrum.step==11);
     split=spectrum;
     fm1_note_step(&spectrum,0,1000);for(i=0;i<20;i++)fm1_note_step(&split,0,50);
     CHECK(!memcmp(&spectrum,&split,sizeof(spectrum)));
     fm1_note_step(&spectrum,0,UINT32_MAX);CHECK(!spectrum.step && !spectrum.peak);
-    fm1_note_step(&spectrum,65535,84);CHECK(spectrum.step==28 && spectrum.peak==28 && spectrum.peak_count==59);
-    fm1_note_step(&spectrum,0,983);CHECK(spectrum.step && spectrum.peak==28 && !spectrum.peak_count);
-    fm1_note_step(&spectrum,0,17);CHECK(spectrum.peak==27 && spectrum.peak_count==5);
-    fm1_note_step(&spectrum,0,100);CHECK(spectrum.peak==26); /*6-tick fall with nonzero bar. */
+    fm1_note_step(&spectrum,65535,91);CHECK(spectrum.step==28 && spectrum.peak==28 && spectrum.peak_count==59);
+    fm1_note_step(&spectrum,0,1064);CHECK(spectrum.step && spectrum.peak==28 && !spectrum.peak_count);
+    fm1_note_step(&spectrum,0,18);CHECK(spectrum.peak==27 && spectrum.peak_count==5);
+    fm1_note_step(&spectrum,0,109);CHECK(spectrum.peak==26); /*6-tick fall with nonzero bar. */
     spectrum.step=spectrum.target=spectrum.counter=0;spectrum.peak_count=0;
-    fm1_note_step(&spectrum,0,17);CHECK(spectrum.peak==25 && spectrum.peak_count==1);
-    fm1_note_step(&spectrum,0,33);CHECK(spectrum.peak==24); /*2-tick fall with zero bar. */
+    fm1_note_step(&spectrum,0,18);CHECK(spectrum.peak==25 && spectrum.peak_count==1);
+    fm1_note_step(&spectrum,0,37);CHECK(spectrum.peak==24); /*2-tick fall with zero bar. */
 }
 static void motion_tests(void) {
     fm1_meter_motion regular={0},slow={0},jitter={0},cap={0};
@@ -78,7 +107,7 @@ static void tone(int bin,int mode,uint8_t *out) {
 }
 int main(void) {
     uint8_t out[24]={0},anti[24],left[24];unsigned i;
-    motion_tests();event_tests();
+    cadence_tests();velocity_trace_tests();motion_tests();event_tests();
     fm1_meters_spectrum(&m,out);for(i=0;i<24;i++)CHECK(!out[i]);
     for(i=0;i<256;i++)fm1_meters_feed(&m,0,0);
     fm1_meters_spectrum(&m,out);for(i=0;i<24;i++)CHECK(!out[i]);

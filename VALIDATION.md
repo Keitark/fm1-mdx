@@ -551,3 +551,47 @@ Meter/full-view refresh remains below its20Hz target: later live readings are
 error is reported. This is a separate display-performance limitation and does
 not establish MMDSP-equivalent redraw frequency. Internal audible output and
 reference-motion acceptance remain unverified.
+
+## 2026-10-02 MMDSP cadence and30FPS LCD candidate
+
+The meter envelopes now use nominal55.45Hz fractional ticks, separately from
+30Hz LCD requests. Default MMDSP velocity traces, fractional cadence, irregular
+updates, frozen snapshots, dirty-row identity and packed RGB444 row order pass.
+The single owner task still checks1470 queued audio frames before every LCD
+write. Current USB packet/lifecycle fixes are retained.
+
+Validation:15 CTests,7 client,4 screenshot and1 descriptor checks pass. Stock
+12MHz/RGB565 and selected30MHz/RGB444 both link with the pinned SDK and pass
+all11 linked corruption checks each. Reviewed LTO address changes add only
+specific boot-trace/power operand encodings; the original normalized instruction
+checks remain enforced, including a new boot-trace store corruption test.
+
+Before correction, a30-second demo host replay completed19.93FPS. The initial
+uncapped correction completed54.63FPS under the same400us/565-row wire model.
+The final requested30FPS/30MHz/RGB444 Ray Force replay runs180 seconds at+500ppm:
+5400 completed views (30.00FPS),180001 USB packets,7941952 DAC frames,9980 meter
+ticks, zero synth missing frames, rebuffers, USB FIFO errors and peripheral
+errors. Both rise/fall activity counters advance on all16 Ray Force parts.
+The model validates actual task logic, row addresses, encoded pixel/sample
+bytes and immutable completed views; it excludes physical CPU/DMA/USB timing.
+
+Read-only pre-flash COM5 commands succeed. Installed firmware reports10.3FPS,
+playback running, no synth/peripheral errors and zero synth underruns. Both
+USB audio alternate settings are inactive at this observation; the output FIFO
+has15 historical underruns, which is not a current capture error or a claim
+that all USB faults are permanently resolved.
+
+The protected session90d6c25107054d04bae2fa98e893fd4e is idle/unblocked before
+installation. It accepts the offline application-only plan, directory sector
+last; boot/config/reserved regions are preserved. The user explicitly approved
+this exact candidate and requested RAYFOR1.MDX/RAYFOR.PDX upload/play afterward.
+
+- Selected application:192208 bytes, SHA256
+  `74f8a4f2d6cf1e14750db8e1c42c863178f513eedb78d77826fca4bfb5885d13`.
+- Selected full-image SHA256:
+  `4059dbd24bbe3d80794152a0140ab83cf1cc50fdcb15fff3052b9740b73b4f44`.
+- Verified installed rollback SHA256:
+  `eee4038f18ddc1e38a68ef4ed3b2b818d3fdc50e2a5d597edce945e3f1f39a8e`.
+
+Hardware acceptance is separate from the host/model results above. See the
+following deployment entry for the actual flash/boot/upload outcome.

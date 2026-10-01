@@ -41,7 +41,7 @@ static void geometry_tests(void) {
     }
 }
 static void dirty_rows(void) {
-    fm1_screen_view a={0},b;uint8_t old[480],next[480];unsigned trial,y,field;uint32_t seed=42;
+    fm1_screen_view a={0},b;uint8_t old[480],next[480],dirty[240];unsigned trial,y,field;uint32_t seed=42;
     strcpy(a.title,"OLD TITLE");strcpy(a.subtitle,"OLD SUBTITLE");strcpy(a.credit,"Ar.By Artist");
     for(trial=0;trial<420;trial++) {
         b=a;field=trial%14;seed=seed*1664525u+1013904223u;
@@ -58,15 +58,33 @@ static void dirty_rows(void) {
         case 12:b.credit[seed%127]=(char)('A'+seed%26);break;
         case 13:b.credit_scroll=(uint16_t)(seed%600);break;
         }
+        fm1_screen_dirty_rows(&a,&b,dirty);
         for(y=0;y<240;y++){fm1_screen_row(&a,y,old);fm1_screen_row(&b,y,next);
+            CHECK(dirty[y]==fm1_screen_row_changed(&a,&b,y));
             if(!fm1_screen_row_changed(&a,&b,y))CHECK(!memcmp(old,next,480));}
         a=b;
     }
     for(y=0;y<240;y++)CHECK(!fm1_screen_row_changed(&a,&a,y));
 }
+static void packed_rows(void) {
+    fm1_screen_view v={0};uint8_t rgb[480],packed[362];unsigned y,x,i;
+    strcpy(v.title,"RGB444 ROW PACKING");v.running=1;v.selected=5;v.mutes=0x5555;
+    for(i=0;i<32;i++){v.spectrum[i]=(uint8_t)(i*8);v.spectrum_hold[i]=(uint8_t)(255-i*7);}
+    for(i=0;i<16;i++){v.parts[i]=(uint8_t)(i*17);v.hold[i]=(uint8_t)(255-i*17);}
+    for(y=0;y<240;y++) {
+        memset(packed,0xa5,sizeof(packed));fm1_screen_row444(&v,y,packed+1);fm1_screen_row(&v,y,rgb);
+        CHECK(packed[0]==0xa5 && packed[361]==0xa5);
+        for(x=0;x<240;x++) {
+            unsigned n=x/2*3+1,c=(rgb[x*2]<<8)|rgb[x*2+1],r,g,b;
+            if(x&1){r=packed[n+1]&15;g=packed[n+2]>>4;b=packed[n+2]&15;}
+            else {r=packed[n]>>4;g=packed[n]&15;b=packed[n+1]>>4;}
+            CHECK(r==(c>>12) && g==((c>>7)&15) && b==((c>>1)&15));
+        }
+    }
+}
 int main(void) {
     unsigned offset,i,crc=0xffffffffu,token;uint8_t row[480];char s[80];
-    title_tests();geometry_tests();dirty_rows();command("MDX SHOT BEGIN",0);CHECK(strstr(answer,"NO_COMPLETE_FRAME"));
+    title_tests();geometry_tests();dirty_rows();packed_rows();command("MDX SHOT BEGIN",0);CHECK(strstr(answer,"NO_COMPLETE_FRAME"));
     strcpy(shown.title,"SUPER LAYDOCK");shown.running=1;shown.mutes=1;shown.spectrum[4]=200;shown.parts[8]=160;ready=1;
     command("MDX SHOT BEGIN",1);token=screen.token;CHECK(screen.active && screen.frame==7 && yields==60);
     memset(&shown,0,sizeof(shown)); /* Snapshot remains immutable while UI changes. */

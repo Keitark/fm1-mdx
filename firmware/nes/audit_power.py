@@ -150,7 +150,9 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
         # b[++r1=232],0x2001302 [r8+244],0x20015be [r8+268].
         # Packet staging link: reviewed same power stores target offsets
         # +240/+252/+276 under ota_status0x1c4e2d0. Power body stays pinned.
-        require(layout in ((224,236,260),(228,240,264),(232,244,268),(240,252,276),(260,272,296),(284,296,320)),
+        # Cadence link: ota_status0x1c4e2d0; reviewed stores0x20012d4
+        # b[++r1=244],0x2001302 [r8+256],0x20015be [r8+280].
+        require(layout in ((224,236,260),(228,240,264),(232,244,268),(240,252,276),(244,256,280),(260,272,296),(284,296,320)),
                 'Composite audio power merged-global layout changed')
     for off,target,prefix,regbits,historical in (
         (0x0d6,'lrc.0',b'\x5a\xee',0x10,bytes.fromhex('5a ee 14 04')),

@@ -41,6 +41,10 @@ void fm1_display_test_stop(void);
 #include <stddef.h>
 /* Synchronous stream through the already initialized stock-sequence driver. */
 int fm1_display_write(int data,const uint8_t *,size_t);
+#ifdef FM1_MDX_PLAYER
+/* Task-only format/divider selection after stock startup, before MDX draws. */
+int fm1_display_mdx_stream_start(void);
+#endif
 #ifdef FM1_LCD_ASYNC
 typedef struct {
     uint32_t submitted,completed,busy_skips,irqs,bytes,errors;

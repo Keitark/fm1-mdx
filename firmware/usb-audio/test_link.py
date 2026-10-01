@@ -1,6 +1,7 @@
 """Offline regression checks against the linked composite ELF; no device I/O."""
 from pathlib import Path
 import struct
+import os
 import sys
 import unittest
 
@@ -12,7 +13,7 @@ from audit_boot import audit, PARTS
 class LinkTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.folder = ROOT / 'build/target-audio'
+        cls.folder = Path(os.environ.get('FM1_LINK_TEST_DIR', ROOT / 'build/target-audio'))
         cls.elf = (cls.folder / 'fm1-mdx.elf').read_bytes()
         offset = struct.unpack_from('<I', cls.elf, 32)[0]
         count, strings = struct.unpack_from('<HH', cls.elf, 48)
@@ -42,6 +43,10 @@ class LinkTests(unittest.TestCase):
 
     def test_original_passes(self):
         self.assertEqual(self.check_elf(self.elf)['static_audit'], 'passed')
+
+    def test_boot_trace_store_corruption_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'Boot trace wrapper instructions changed'):
+            self.check_elf(self.corrupt('__wrap_memory_init', 14))
 
     def test_usb_task_affinity_corruption_is_rejected(self):
         # A corrupted task-name pointer must not bypass the CPU0 requirement.

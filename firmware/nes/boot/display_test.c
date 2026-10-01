@@ -561,6 +561,23 @@ int fm1_display_test_init(void) {
 #endif
     return 0;
 }
+#ifdef FM1_MDX_PLAYER
+int fm1_display_mdx_stream_start(void) {
+    if(!enabled)return -4;
+#ifdef FM1_MDX_LCD_BAUD
+    /* No PLL/CPU/LSB changes. BAUD is write-only, so validate its source. */
+    if(clk_get("lsb")!=60000000)return fail(-11);
+#endif
+#ifdef FM1_MDX_LCD_RGB444
+    /* Serial MCU bits011; retain RGB interface101. Startup fill stays565. */
+    {static const uint8_t format=0x53;if(command(0x3a,&format,1))return -2;}
+#endif
+#ifdef FM1_MDX_LCD_BAUD
+    CON=0x4021;BAUD=FM1_MDX_LCD_BAUD;
+#endif
+    return 0;
+}
+#endif
 void fm1_display_test_stop(void) {
 #ifdef FM1_LCD_ASYNC
     async_shutdown();

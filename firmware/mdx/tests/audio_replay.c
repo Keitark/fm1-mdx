@@ -33,7 +33,11 @@ int task_create(void (*fn)(void *),void *u,const char *name){(void)u;CHECK(!strc
 uint32_t timer_get_ms(void){return ms/10*10;}
 void wdt_clear(void){
     if(screen_frame!=checked_frame){unsigned y;uint8_t expected[480];
-        for(y=0;y<240;y++){fm1_screen_row(&screen_shown,y,expected);CHECK(!memcmp(expected,lcd_buffer[y],480));}
+        for(y=0;y<240;y++){fm1_screen_row(&screen_shown,y,expected);
+#ifdef FM1_MDX_LCD_RGB444
+            {unsigned x;for(x=0;x<240;x++){unsigned c=((expected[2*x]<<8)|expected[2*x+1])&0xf79e;expected[2*x]=(uint8_t)(c>>8);expected[2*x+1]=(uint8_t)c;}}
+#endif
+            CHECK(!memcmp(expected,lcd_buffer[y],480));}
         for(y=0;y<16;y++){part_rises[y]+=screen_shown.parts[y]>previous_parts[y];part_falls[y]+=screen_shown.parts[y]<previous_parts[y];previous_parts[y]=screen_shown.parts[y];}
         checked_frame=screen_frame;
     }
@@ -57,12 +61,27 @@ void bit_clr_ie(unsigned id,unsigned cpu){(void)id;CHECK(!cpu);}
 int sys_usec_timer_add(void *u,void (*fn)(void *),uint32_t period,unsigned char unit,unsigned char cpu){CHECK(!u&&period==1000&&unit==1&&!cpu);tick=fn;return 1;}
 void sys_usec_timer_del(int id){CHECK(id==1);tick=0;}
 int fm1_display_test_init(void){return 0;}
+int fm1_display_mdx_stream_start(void){return 0;}
 int fm1_display_test_frame(uint32_t n){(void)n;return 0;}
 void fm1_display_test_stop(void){}
 int fm1_display_write(int data,const uint8_t *b,size_t n){CHECK(b&&n&&(data==0||data==1));
     if(!data){CHECK(n==1);lcd_command=b[0];}
     else if(lcd_command==0x2b){CHECK(n==4);lcd_y=(b[0]<<8)|b[1];CHECK(lcd_y==((b[2]<<8)|b[3]));}
-    else if(n==480){CHECK(lcd_command==0x2c && lcd_y<240);memcpy(lcd_buffer[lcd_y],b,480);lcd_us+=400;while(lcd_us>=1000){lcd_us-=1000;advance(1);}}return 0;}
+    else if(n==MDX_ROW_BYTES){CHECK(lcd_command==0x2c && lcd_y<240);
+#ifdef FM1_MDX_LCD_RGB444
+        {unsigned x;for(x=0;x<240;x++){unsigned k=x/2*3,r,g,blue,c;
+            if(x&1){r=b[k+1]&15;g=b[k+2]>>4;blue=b[k+2]&15;}
+            else {r=b[k]>>4;g=b[k]&15;blue=b[k+1]>>4;}
+            c=(r<<12)|(g<<7)|(blue<<1);lcd_buffer[lcd_y][2*x]=(uint8_t)(c>>8);lcd_buffer[lcd_y][2*x+1]=(uint8_t)c;}}
+#else
+        memcpy(lcd_buffer[lcd_y],b,480);
+#endif
+#ifdef FM1_MDX_LCD_BAUD
+        lcd_us+=400*MDX_ROW_BYTES*12/(480*(60/(FM1_MDX_LCD_BAUD+1)));
+#else
+        lcd_us+=400*MDX_ROW_BYTES/480;
+#endif
+        while(lcd_us>=1000){lcd_us-=1000;advance(1);}}return 0;}
 int fm1_wl82_keyscan_async_start(fm1_wl82_keyscan *s,void *u,uint32_t (*clock)(void *)){CHECK(!u&&clock);s->running=1;return 0;}
 void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *s){(void)s;}
 void fm1_wl82_keyscan_async_kick(fm1_wl82_keyscan *s){s->sequence++;}
@@ -114,7 +133,7 @@ int main(int argc,char **argv){
     printf("{\"virtual_seconds\":%u,\"ppm\":%d,\"stress\":%u,\"packets\":%u,\"dac_frames\":%u,\"synth_missing\":%u,\"rebuffer_events\":%u,\"usb_errors\":%u,\"stream_restarts\":%u,\"producer_stalls\":%u,\"wrap_seeded\":%u,\"player_error\":%d,\"lcd_error\":%d}\n",duration,drift,stress,replay_usb_packets(),frames,underruns,rebuffer_events,errors,restarts,producer_stalls,wrap_seeded,player.error,lcd_error);
     fprintf(stderr,"Song restarts=%u, playing=%u, sequencer ended=%u\n",song_restarts,player.playing,player.sequence.ended);
     fprintf(stderr,"%s",usb);
-    fprintf(stderr,"Display: frames=%u fps=%.2f rows=%u skipped=%u max_ms=%u (400us/row wire-cost model)\n",screen_frame,(double)screen_frame/duration,ui_rows,ui_skipped,ui_max_ms);
+    fprintf(stderr,"Display: frames=%u fps=%.2f rows=%u skipped=%u max_ms=%u meter_ticks=%u (scaled400us/565-row wire-cost model)\n",screen_frame,(double)screen_frame/duration,ui_rows,ui_skipped,ui_max_ms,ui_ticks);
     {unsigned part;fprintf(stderr,"Part motion rises/falls:");for(part=0;part<16;part++)fprintf(stderr," %u:%u/%u",part+1,part_rises[part],part_falls[part]);fputc('\n',stderr);}
     if(duration>=5)CHECK(screen_frame>duration*10 && ui_skipped>ui_rows);
     if(strcmp(argv[1],"--demo")){free(m);free(p);}

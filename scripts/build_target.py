@@ -17,7 +17,10 @@ import vendor_overlay
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--out',type=Path);p.add_argument('--usb-audio',action='store_true')
-    a=p.parse_args();out=(a.out or ROOT/('build/target-audio' if a.usb_audio else 'build/target')).resolve();out.mkdir(parents=True,exist_ok=True)
+    p.add_argument('--lcd-rgb444',action='store_true')
+    p.add_argument('--lcd-spi',type=int,choices=(12,15,30),default=12,help='Nominal MHz with60MHz LSB;30MHz is a bench experiment')
+    a=p.parse_args();suffix=('-lcd%d%s'%(a.lcd_spi,'-444' if a.lcd_rgb444 else '-565')) if a.lcd_spi!=12 or a.lcd_rgb444 else ''
+    out=(a.out or ROOT/(('build/target-audio' if a.usb_audio else 'build/target')+suffix)).resolve();out.mkdir(parents=True,exist_ok=True)
     manifest=out/'build-manifest.json'
     manifest.write_text(json.dumps({'status':'BUILDING_OR_FAILED','flashable':False})+'\n')
     with (out/'build.log').open('w',encoding='utf8') as log:
@@ -36,6 +39,8 @@ def main():
             '-DFM1_MDX_PLAYER=1','-DFM1_TARGET_PI32V2=1','-DFM1_KEYSCAN_DMA2=1',
             '-DFM1_KEYSCAN_IRQ=1','-DFM1_KEYSCAN_PACED=1','-DFM1_KEYSCAN_CLOCK_QUANTUM_US=10000']
         includes=['-I'+str(MDX/n) for n in ('include','vendor/retrofm','vendor/mdxtools')]
+        if a.lcd_rgb444:defines+=['-DFM1_MDX_LCD_RGB444=1']
+        if a.lcd_spi!=12:defines+=['-DFM1_MDX_LCD_BAUD='+str({15:3,30:1}[a.lcd_spi])]
         if a.usb_audio:
             defines+=['-DFM1_USB_AUDIO=1'];includes+=['-I'+str(ROOT/'firmware/usb-audio')]
         includes+=['-I'+str(n) for n in (USB,BOARD/'boot',BOARD/'include',SDK/'apps/common',SDK/'apps/common/usb',SDK/'apps/common/usb/device')]
@@ -87,6 +92,7 @@ def main():
         (out/'static-audit.json').write_text(json.dumps(report,indent=2)+'\n')
         inputs=list(sources)+list(ROOT.rglob('*.h'))+[Path(__file__),BOARD/'audit_boot.py',BOARD/'audit_power.py',BOARD/'audit_pre_os.py',BOARD/'audit_usb_packet.py',BOARD/'build_env.py',USB/'vendor_overlay.py']
         result={'status':'LINKED_MDX_KARAOKE_UNTESTED','usb_audio':a.usb_audio,'flashable':False,'device_operations_performed':False,
+                'lcd_spi_mhz':a.lcd_spi,'lcd_wire_bpp':12 if a.lcd_rgb444 else 16,
                 'sdk_commit':SDK_PIN,'application_bytes':len(app.read_bytes()),'application_sha256':hashlib.sha256(app.read_bytes()).hexdigest(),
                 'sample_storage':'read-only flash','upload_storage':'192KiB RAM, volatile','static_audit':report,
                 'source_sha256':{str(s):hashlib.sha256(s.read_bytes()).hexdigest() for s in inputs},
