@@ -43,7 +43,7 @@ def main():
         sources=[sdk_path(s) for field in ('c_SRC_FILES','S_SRC_FILES') for s in make_list(make,field)]
         sources=[s for s in sources if s.name not in ('app_main.c','board.c','cpp_run_init.c')]
         sources+=[BOARD/'boot'/n for n in ('board.c','boot_compat.c','boot_trace.c','board_power.c')]
-        sources+=[USB/n for n in ('app_main.c','protocol.c','descriptors.c','usb_policy.c','dma.c','rx_channel.c','boot_entry.c','peripheral_logic.c')]
+        sources+=[USB/n for n in ('app_main.c','protocol.c','descriptors.c','usb_policy.c','dma.c','packet.c','rx_channel.c','boot_entry.c','peripheral_logic.c')]
         sources+=[BOARD/'boot/display_test.c',BOARD/'src/fm1_wl82_keyscan.c',BOARD/'src/fm1_stock_keys.c']
         fast=list((MDX/'src').glob('*.c'))+list((MDX/'vendor/retrofm').glob('*.c'))+list((MDX/'vendor/mdxtools').glob('*.c'))
         fast+=[MDX/'samples/demo.c',BOARD/'src/fm1_volume.c',BOARD/'src/fm1_audio_queue.c']
@@ -85,7 +85,7 @@ def main():
         (out/'disassembly.asm').write_text(run([TC/'llvm-objdump.exe','-d','-mcpu=r3',elf]))
         report=audit(elf.read_bytes(),app.read_bytes(),usb_only=True,usb_peripheral_tests=True,usb_mdx=True,usb_audio=a.usb_audio,require_boot_trace=True,require_board_power=True)
         (out/'static-audit.json').write_text(json.dumps(report,indent=2)+'\n')
-        inputs=list(sources)+list(ROOT.rglob('*.h'))+[Path(__file__),BOARD/'audit_boot.py',BOARD/'audit_power.py',BOARD/'audit_pre_os.py',BOARD/'build_env.py',USB/'vendor_overlay.py']
+        inputs=list(sources)+list(ROOT.rglob('*.h'))+[Path(__file__),BOARD/'audit_boot.py',BOARD/'audit_power.py',BOARD/'audit_pre_os.py',BOARD/'audit_usb_packet.py',BOARD/'build_env.py',USB/'vendor_overlay.py']
         result={'status':'LINKED_MDX_KARAOKE_UNTESTED','usb_audio':a.usb_audio,'flashable':False,'device_operations_performed':False,
                 'sdk_commit':SDK_PIN,'application_bytes':len(app.read_bytes()),'application_sha256':hashlib.sha256(app.read_bytes()).hexdigest(),
                 'sample_storage':'read-only flash','upload_storage':'192KiB RAM, volatile','static_audit':report,

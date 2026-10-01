@@ -8,11 +8,15 @@
 #endif
 #include "bridge.h"
 #include "target.h"
+#include "packet.h"
 #include <stdio.h>
 #include <string.h>
 static fm1_uac_bridge bridge;
 static spinlock_t lock;
 static unsigned armed;
+static volatile unsigned capture_epoch;
+static unsigned capture_pending;
+static u8 capture_packet[192]; /* CPU staging; controller never owns this. */
 static struct {uint32_t busy,submitted,short_write,starts,stops,last_csr,last_write;} transport;
 #ifdef _MSC_VER
 static __declspec(align(64)) u8 fm1_uac_dma[2][256];
@@ -27,16 +31,21 @@ static void rx(struct usb_device_t *d,u32 ep) {
     f=take();if(armed)fm1_uac_receive(&bridge,fm1_uac_dma[0],n);release(f);
 }
 static void tx(struct usb_device_t *d,u32 ep) {
-    unsigned f,n,csr,result;const usb_dev id=usb_device2id(d);(void)ep;
+    unsigned f,n,csr,result,epoch;const usb_dev id=usb_device2id(d);(void)ep;
     /* The SDK writer can poll TxPktRdy for seconds. Never enter that wait
        from a USB IRQ, or overwrite a buffer the controller still owns. */
     csr=usb_read_txcsr(id,1);
     f=take();transport.last_csr=csr;
     if(csr&TXCSRP_TxPktRdy){transport.busy++;release(f);return;}
     release(f);
-    f=take();n=armed?fm1_uac_transmit(&bridge,fm1_uac_dma[1],192):0;release(f);
-    if(n){result=usb_g_iso_write(id,1,NULL,n);f=take();transport.last_write=result;
-        if(result==n)transport.submitted++;else transport.short_write++;release(f);}
+    f=take();epoch=capture_epoch;
+    if(armed && bridge.in_active && !capture_pending)
+        capture_pending=(unsigned)fm1_uac_transmit(&bridge,capture_packet,sizeof(capture_packet));
+    n=armed && bridge.in_active?capture_pending:0;release(f);
+    if(n){result=fm1_usb_packet_write(id,1,capture_packet,n,&capture_epoch,epoch);
+        f=take();transport.last_write=result;
+        if(result==n){transport.submitted++;if(epoch==capture_epoch)capture_pending=0;}
+        else transport.short_write++;release(f);}
 }
 static void stream(struct usb_device_t *d,unsigned direction,int on) {
     unsigned f;const usb_dev id=usb_device2id(d);
@@ -46,6 +55,7 @@ static void stream(struct usb_device_t *d,unsigned direction,int on) {
     else {usb_clr_intr_rxe(id,1);usb_g_set_intr_hander(id,1,NULL);
         usb_write_rxcsr(id,1,RXCSRP_FlushFIFO|RXCSRP_ClrDataTog|RXCSRP_ISOCHRONOUS);}
     f=take();
+    if(direction){++capture_epoch;capture_pending=0;}
     if(!armed)on=0;
     if(direction){if(on)transport.starts++;else transport.stops++;}
     fm1_uac_stream(&bridge,direction,on);release(f);
@@ -94,10 +104,11 @@ void fm1_usb_audio_status(char *out,size_t n) {
         values[0],values[1],values[2],values[3],values[4],values[5],values[6],values[7],values[8],values[9],values[10]);
 }
 void fm1_usb_audio_transport_status(char *out,size_t n) {
-    uint32_t busy,submitted,short_write,starts,stops,csr,written;unsigned f=take();
+    uint32_t busy,submitted,short_write,starts,stops,csr,written,epoch,pending;unsigned f=take();
     busy=transport.busy;submitted=transport.submitted;short_write=transport.short_write;
-    starts=transport.starts;stops=transport.stops;csr=transport.last_csr;written=transport.last_write;release(f);
-    snprintf(out,n,"MDX USB submitted=%lu short=%lu busy=%lu starts=%lu stops=%lu csr=%04lx written=%lu\n",
+    starts=transport.starts;stops=transport.stops;csr=transport.last_csr;written=transport.last_write;
+    epoch=capture_epoch;pending=capture_pending;release(f);
+    snprintf(out,n,"MDX USB submitted=%lu short=%lu busy=%lu starts=%lu stops=%lu csr=%04lx written=%lu epoch=%lu pending=%lu\n",
         (unsigned long)submitted,(unsigned long)short_write,(unsigned long)busy,(unsigned long)starts,
-        (unsigned long)stops,(unsigned long)csr,(unsigned long)written);
+        (unsigned long)stops,(unsigned long)csr,(unsigned long)written,(unsigned long)epoch,(unsigned long)pending);
 }

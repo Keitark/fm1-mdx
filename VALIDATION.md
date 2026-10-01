@@ -448,3 +448,106 @@ The50ms requested view interval is unchanged. Both prior images are preserved
 privately for rollback. Physical screen offset is accepted; meter movement,
 Laydock reload and USB audio reliability are separate acceptance items. Reload
 at120-byte/20ms and48-byte/50ms pacing timed out with capture active.
+
+### 2026-10-01 USB packet and lifecycle candidate
+
+Installed c9810a47 firmware received Ray Force successfully with capture closed.
+The subsequent input-only48kHz stereo16-bit recording lost both audio and CDC
+heartbeats after75.62 captured seconds. COM4 then failed configuration with
+Windows error31 even after capture closed. The partial WAV has peak10395 and
+zero clipped samples. This establishes a shared USB failure, not its exact cause.
+
+The new candidate replaces normal audio-IN/CDC-IN SDK polling writes with an
+audited single-packet commit, preserves pending capture packets on rejection,
+and invalidates them at stream transitions. The composite USB and peripheral
+tasks are pinned to CPU0 with the SDK's task-name prefix, matching USB/ALINK
+interrupt affinity. No synth, mix, sample-rate conversion or LPF changes are
+included. The prior meter-colour correction is inherited from the parent branch.
+
+All10 CTests,7 client checks,4 screenshot checks and the descriptor test pass.
+The packet helper receives100000 mixed submissions under the mocked registers.
+The pinned SDK composite link and10 linked corruption checks pass, including
+packet count/commit/IRQ restoration and both task affinity registrations.
+Reviewed SDK register accesses retain finite hardware-acknowledgement waits;
+this does not certify a hard real-time controller deadline.
+
+The private Ray Force host replay runs140 seconds with zero synth missing
+samples, rebuffers or modeled USB FIFO errors. A360-second stress replay covers
+29 stream restart/reset operations and7 deliberately injected producer stalls;
+those stalls cause7 rebuffers/448 missing frames, with zero USB FIFO errors or
+clipping. Host mocks do not reproduce the WL82 controller, DMA, dual-core
+scheduler or Windows USB driver.
+
+This candidate is unflashed. Hardware acceptance requires a complete Ray Force
+capture, repeated OBS source activation/deactivation and mute/unmute, concurrent
+CDC diagnostics/upload, USB reconnect and protected UBOOT recovery. CPU0 task
+consolidation also requires checking synth reserve, internal audio and screen
+FPS. Preserve the full readback-verified c9810a47 image for rollback and obtain
+authorization for the exact newly packaged image before physical flashing.
+
+### Host stall reproduction attempt
+
+The shared endpoint harness executes actual `target.c` and `packet.c`, with
+mocked registers, IRQ dispatch and DAC samples. A separate legacy positive
+control reconstructs only the pinned SDK's busy/deadline loop. With a busy
+endpoint, the advancing-clock control times out after20300 modeled polls; the
+frozen-clock control reaches its100000-poll watchdog without returning. This
+demonstrates a conditional deadlock mechanism, not FM1's original trigger or
+execution of its complete SDK driver.
+
+Two600-second shared-controller runs pass. Normal capture receives600001 audio
+packets and60000 CDC packets with no FIFO errors. Fault injection receives
+574252 audio packets and59485 CDC packets, completing60000 service checks with
+13 stream restart/reset operations,12 ready/busy races and16 stale CDC attempts.
+It includes a5-second audio-only pause, a5-second whole-bus pause, periodic
+350ms audio pauses and epoch rollover. Audio pauses leave serial progressing;
+both endpoints recover after whole-bus backpressure. The deliberate host pauses
+produce1107398 capture FIFO dropped frames, with zero capture underruns or
+clipped samples. This is expected data loss under a stopped consumer, not a
+spontaneous or persistent stall. The modeled timeout clock freezes for5 seconds
+without affecting the new packet helper, which does not use that clock.
+
+A separate1800-second Ray Force integrated musical replay produces1800001 USB
+packets and79379968 DAC frames, with zero synth missing samples, rebuffers,
+modeled FIFO errors, player errors or LCD errors. That replay still uses a
+complete-packet SDK boundary; the shared endpoint harness uses a deterministic
+test waveform instead of the sequencer. Neither executes Windows/OBS, DMA bus
+arbitration, hardware register acknowledgement timing or the real scheduler.
+The observed75-second hardware stall has not been reproduced spontaneously.
+
+All12 CTests,7 client checks,4 screenshot checks, the descriptor check and10
+linked corruption checks pass. Both board profiles relink with unchanged
+application bytes. Prepared99bb92c full image eee4038f18ddc1e38a68ef4ed3b2b818d3fdc50e2a5d597edce945e3f1f39a8e
+is unchanged and remains unflashed; its private original package and rollback
+are preserved. This follow-up adds only host coverage and documentation.
+
+### 2026-10-01 USB candidate installation and Ray Force bench
+
+The user requested installing the connected device. Candidate99bb92c, full image
+eee4038f18ddc1e38a68ef4ed3b2b818d3fdc50e2a5d597edce945e3f1f39a8e,
+was written through the existing protected updater. All47 application sectors
+and one full1MiB readback match. Boot/configuration protection remains intact;
+c9810a47 remains the private rollback. No replacement bootloader was installed.
+
+One reset was issued. The helper's known UTF8 log-decoding error was resolved
+by successful CDC boot observation without repeating reset. The protected
+session is idle/unblocked, with the new image as verified baseline and no
+reset/observation pending. Demo playback progressed with zero underruns.
+
+A6-second48kHz stereo16-bit WinMM input recording contains288000 frames and
+nonzero audio. RAYFOR1.MDX and its named RAYFOR.PDX then uploaded successfully:
+194663 bundle bytes,117.922 seconds, CRC/offset acknowledgements accepted.
+PLAY succeeded, running/ready and zero synth/peripheral errors. Uploaded songs
+remain volatile. Panel/encoder controls were used during subsequent playback.
+
+Reopened capture completed89.97 seconds /4318560 frames of Ray Force, exceeding
+the earlier75.62-second stall point. Peak10402, zero clipped samples. Concurrent
+and post-capture CDC diagnostics respond: zero synth underruns/rebuffers/late
+callbacks, bad USB packets, capture underruns and capture overflows. This is
+one bounded recording, not complete-song or repeated OBS/reconnect acceptance.
+
+Meter/full-view refresh remains below its20Hz target: later live readings are
+7.2,7.6 and9.6FPS, following15.6-19.0 readings near transfer completion. No LCD
+error is reported. This is a separate display-performance limitation and does
+not establish MMDSP-equivalent redraw frequency. Internal audible output and
+reference-motion acceptance remain unverified.

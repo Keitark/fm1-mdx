@@ -38,6 +38,7 @@ target_link_libraries(uac_tests PRIVATE fm1_uac)
 add_test(NAME usb_audio_bridge COMMAND uac_tests)
 add_executable(uac_target_tests ../usb-audio/test_target.c)
 target_link_libraries(uac_target_tests PRIVATE fm1_uac)
+target_include_directories(uac_target_tests PRIVATE ../usb-diag)
 add_test(NAME usb_audio_target_lifecycle COMMAND uac_target_tests)
 add_executable(mdx_render tests/render.c)
 target_link_libraries(mdx_render PRIVATE fm1_mdx)
@@ -59,3 +60,18 @@ target_include_directories(keyscan_clock_tests PRIVATE ../nes/include)
 target_compile_definitions(keyscan_clock_tests PRIVATE FM1_WL82_KEYSCAN_TEST=1
   FM1_KEYSCAN_IRQ=1 FM1_KEYSCAN_DMA2=1 FM1_KEYSCAN_PACED=1 FM1_KEYSCAN_CLOCK_QUANTUM_US=10000)
 add_test(NAME mdx_keyscan_coarse_clock COMMAND keyscan_clock_tests)
+
+add_executable(usb_packet_tests ../usb-diag/test_packet.c ../usb-diag/packet.c)
+target_compile_definitions(usb_packet_tests PRIVATE FM1_USB_PACKET_HOST=1)
+add_test(NAME usb_nonblocking_packets COMMAND usb_packet_tests)
+
+# Shared endpoint fault model executes the actual UAC target and packet helper.
+add_executable(usb_stall_tests ../usb-audio/test_stall.c ../usb-diag/packet.c)
+target_include_directories(usb_stall_tests PRIVATE ../usb-diag)
+target_compile_definitions(usb_stall_tests PRIVATE FM1_UAC_TARGET_HOST=1
+  FM1_USB_PACKET_HOST=1 FM1_USB_PACKET_COMPOSITE_HOST=1)
+target_link_libraries(usb_stall_tests PRIVATE fm1_uac)
+add_test(NAME usb_shared_endpoint_stall COMMAND usb_stall_tests)
+add_test(NAME usb_shared_endpoint_backpressure COMMAND usb_stall_tests stress)
+set_tests_properties(usb_shared_endpoint_stall usb_shared_endpoint_backpressure
+  PROPERTIES TIMEOUT 20)

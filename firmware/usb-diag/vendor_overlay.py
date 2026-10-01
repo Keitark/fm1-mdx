@@ -179,7 +179,7 @@ def boot_entry(text):
                 'extern void nvram_set_boot_state(u32 state);')
 
 def cdc(text):
-    text='#include "usb_control.h"\n#include "boot_entry.h"\n'+text
+    text='#include "usb_control.h"\n#include "boot_entry.h"\n#include "packet.h"\n'+text
     text=once(text,'    u8 bmTransceiver;','    volatile u8 bmTransceiver;')
     text=once(text,'static struct usb_cdc_gadget *cdc_hdl[USB_MAX_HW_NUM];',
         'static struct usb_cdc_gadget *cdc_hdl[USB_MAX_HW_NUM];\nvolatile unsigned fm1_cdc_generation;')
@@ -225,18 +225,20 @@ def cdc(text):
     if(usb_id!=FM1_USB_CONTROLLER)return 0;
     return fm1_usb_rx_take(buf,len);
 }''')
-    # Bounded task-only mutex wait and no multi-packet/ZLP loop.
-    text=function(text,'cdc_write_data', '''u32 cdc_write_data(const usb_dev usb_id, u8 *buf, u32 len)
+    # One CDC owner task; atomic packet submission needs no task mutex/wait.
+    text=function(text,'cdc_write_data', '''u32 fm1_cdc_write_packet(const usb_dev usb_id, u8 *buf, u32 len, unsigned generation)
 {
     u32 result;
-    if(!cdc_hdl[usb_id] || !len || len>=MAXP_SIZE_CDC_BULKIN ||
+    if(usb_id!=FM1_USB_CONTROLLER || !cdc_hdl[usb_id] || !len || len>=MAXP_SIZE_CDC_BULKIN ||
        (cdc_hdl[usb_id]->bmTransceiver & (BIT(0)|BIT(4)))!=(BIT(0)|BIT(4)) ||
        usb_id2device(usb_id)->bDeviceStates!=USB_CONFIGURED)return 0;
-    if(os_mutex_pend(&cdc_hdl[usb_id]->mutex_data,1))return 0;
-    if(usb_read_txcsr(usb_id,CDC_DATA_EP_IN)&1)result=0;
-    else result=usb_g_bulk_write(usb_id,CDC_DATA_EP_IN,buf,len);
-    os_mutex_post(&cdc_hdl[usb_id]->mutex_data);
+    result=fm1_usb_packet_write(usb_id,CDC_DATA_EP_IN,buf,len,
+                                &fm1_cdc_generation,generation);
     return result;
+}
+u32 cdc_write_data(const usb_dev usb_id, u8 *buf, u32 len)
+{
+    return fm1_cdc_write_packet(usb_id,buf,len,fm1_cdc_generation);
 }''')
     # Unused generic echo prints untrusted bytes as a C string: remove it.
     text=re.sub(r'^s32 usb_cdc_output_handler\(void \*priv, u8 \*buf, u32 len\)\n\{.*?^\}',

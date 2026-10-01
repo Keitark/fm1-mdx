@@ -148,7 +148,9 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
         # lrc.0 at0x1c4e8ec, lrc.6 at0x1c4e8f8, sys_low_power0x1c4e910.
         # Note-meter link ota_status0x1c4e2d0: reviewed stores0x20012d4
         # b[++r1=232],0x2001302 [r8+244],0x20015be [r8+268].
-        require(layout in ((224,236,260),(228,240,264),(232,244,268),(260,272,296),(284,296,320)),
+        # Packet staging link: reviewed same power stores target offsets
+        # +240/+252/+276 under ota_status0x1c4e2d0. Power body stays pinned.
+        require(layout in ((224,236,260),(228,240,264),(232,244,268),(240,252,276),(260,272,296),(284,296,320)),
                 'Composite audio power merged-global layout changed')
     for off,target,prefix,regbits,historical in (
         (0x0d6,'lrc.0',b'\x5a\xee',0x10,bytes.fromhex('5a ee 14 04')),
@@ -158,10 +160,12 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
         delta=value(target)-base
         if usb_audio:
             require(delta%4==0,'Composite audio power state alignment changed')
-        elif usb_only and delta==256:
+        elif usb_only and delta in (256,260):
             # Screenshot CDC link: reviewed sys_low_power store d1 ec 81 30
             # at power_init+0x3c0, with LRC globals at+220/+232.
-            require(off==0x3c0 and layout==(220,232,256),
+            # Packet CDC link: ota_status0x1c4c060; reviewed stores target
+            # +224/+236/+260 (power_init+0x3c0 d1 ec 85 30).
+            require(off==0x3c0 and layout in ((220,232,256),(224,236,260)),
                     'Screenshot CDC power merged-global layout changed')
         else:
             require(0<=delta<256 and delta%4==0,'Power merged-global offset outside reviewed encoding')
