@@ -5,6 +5,8 @@ firmware project. **It cannot boot or update a device yet.** The implemented
 piece is application validation and preparation of the application handoff.
 It uses no vendor archive, stock image, unit backup, device I/O, or SDK header.
 It is not linked into the player and does not change the installed firmware.
+The [clean-lab step 1](../bootlab/README.md) separately builds only the portable
+validation module, excluding this directory's provisional handoff implementation.
 
 The current working assumption is that the public player may retain its pinned
 Jieli SDK and compiler dependencies. Replacing the bootloader alone does not
@@ -13,7 +15,7 @@ package. A completely vendor-independent firmware/toolchain is a larger task.
 
 ## Implemented contract
 
-`boot_policy.c` implements the following, with synthetic tests:
+`boot_validation.c` and `boot_policy.c` implement the following, with synthetic tests:
 
 - Check caller-supplied physical flash bounds, application allocation, maximum
   application size, and XIP mapping arithmetic without integer wraparound.
@@ -63,8 +65,8 @@ Optional WL82 object compilation, using an externally installed Jieli compiler:
 New-Item -ItemType Directory -Force build/boot-policy-target | Out-Null
 & 'C:\JL\pi32\bin\clang.exe' -target pi32v2 -mcpu=r3 -integrated-as `
   -std=c11 -Oz -fno-common -Werror -I firmware/bootloader `
-  -c firmware/bootloader/boot_policy.c -o build/boot-policy-target/boot_policy.o
-& 'C:\JL\pi32\bin\llvm-nm.exe' --undefined-only build/boot-policy-target/boot_policy.o
+  -c firmware/bootloader/boot_validation.c -o build/boot-policy-target/boot_validation.o
+& 'C:\JL\pi32\bin\llvm-nm.exe' --undefined-only build/boot-policy-target/boot_validation.o
 ```
 
 The reviewed compiler produces an object with no undefined symbols, including
@@ -104,6 +106,7 @@ new bootloader; its boot-region protection remains in place.
   rejected placement.
 - After the final volatile-qualifier correction: focused boot-policy host test
   passes; WL82 object compilation with `-Werror` succeeds and its undefined
-  symbol list is empty.
+symbol list is empty. The later clean-lab split keeps the validation module
+self-contained; the separate handoff module now calls its shared layout check.
 - No device query, reset, transfer, flash or hardware acceptance was performed
   for this milestone.

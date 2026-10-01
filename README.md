@@ -78,6 +78,9 @@ SDK-independent, host-tested application validation and handoff core. Target
 startup, flash access, recovery and public image packaging remain unimplemented;
 it is not a bootable replacement loader. The [offline SDK comparison](BOOTLOADER_STUDY.md)
 records why the available vendor user-boot source cannot link on its own.
+The [clean-lab boot project](firmware/bootlab/README.md) starts with an isolated
+validation module and synthetic host scenarios; it does not use device backups,
+SDK binaries or the provisional handoff ABI.
 
 An optional composite USB Audio Class1 + CDC profile adds computer playback
 through FM1 and MDX recording to the computer at48kHz stereo16-bit PCM:

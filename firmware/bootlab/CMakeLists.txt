@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.20)
+project(fm1_bootlab C)
+enable_testing()
+
+# Step 1 intentionally excludes boot_policy.c and every board/SDK adapter.
+add_library(bootlab_validation ../bootloader/boot_validation.c)
+target_include_directories(bootlab_validation PUBLIC ../bootloader)
+target_compile_features(bootlab_validation PUBLIC c_std_11)
+if(MSVC)
+  target_compile_options(bootlab_validation PRIVATE /W4 /WX)
+else()
+  target_compile_options(bootlab_validation PRIVATE -Wall -Wextra -Werror)
+endif()
+add_executable(bootlab_tests test_validation.c)
+target_link_libraries(bootlab_tests PRIVATE bootlab_validation)
+add_test(NAME bootlab_validation COMMAND bootlab_tests)
+
+add_executable(bootlab_scenarios scenarios.c)
+target_link_libraries(bootlab_scenarios PRIVATE bootlab_validation)
+add_test(NAME bootlab_scenarios COMMAND bootlab_scenarios)

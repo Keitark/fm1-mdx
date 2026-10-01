@@ -1,0 +1,94 @@
+# FM1 clean-lab boot project
+
+Step 1 is an offline source lab for application validation. It uses original
+portable C, arbitrary synthetic fixtures and ordinary build tools. It does not
+query FM1, interrupt playback, prepare an installation image or replace its
+bootloader. A host pass or WL82 object is **not a bootable firmware release**.
+
+## Step 1: isolate and verify the portable core
+
+The lab builds only `../bootloader/boot_validation.c` and its public types.
+The earlier `boot_policy.c` handoff proposal, 92-byte compatibility profile,
+stock comparison tooling and all board code are excluded. There is one shared
+validation implementation; the earlier handoff tests continue using it.
+
+The descriptor is an in-memory lab contract, not a vendor file format. Caller
+supplied values define flash bounds, allocation, XIP mapping, entry and CRC.
+The lab accepts only version 1, zero features, at least two payload bytes,
+an even in-bounds entry and a matching CRC16/XMODEM. CRC detects corruption;
+it does not authenticate firmware. Accepting a descriptor means eligibility
+for a future boot adapter, not permission to jump or write flash.
+
+```powershell
+python scripts/build_bootlab.py host
+```
+
+Two host tests run: exhaustive offset/boundary validation on a 4096-byte
+synthetic flash, and three visible scenarios (valid, corrupt, outside its
+allocation). No real instructions, song, board identity or backup is used.
+The generated `build/bootlab/host/manifest.json` lists source hashes, the
+successful/failed status and excluded inputs. It is reset before every build
+so a failed attempt cannot leave an earlier successful manifest as current.
+
+Optional target object compilation, with an externally installed compiler:
+
+```powershell
+python scripts/build_bootlab.py wl82 --toolchain C:\JL\pi32\bin
+```
+
+This compiles the validation module as freestanding pi32v2/r3 C and rejects any
+undefined symbols. It records compiler/tool and object hashes. It does not link
+an entry point, use a ROM export table, make a boot bank or call a downloader.
+Host tests require Python, CMake and a C11 compiler; the optional WL82 object
+requires Jieli's compiler and symbol tool. No SDK checkout or archive is needed.
+
+## Input and provenance boundary
+
+| Input | Step 1 use |
+|---|---|
+| Original validation code and synthetic tests | Compiled and tested |
+| External host compiler/CMake/Python | Build tools |
+| External Jieli compiler/nm | Optional object tools only |
+| SDK boot interface declarations | Reserved for later ABI/target steps |
+| Vendor `uboot.a` / prebuilt loader | Excluded |
+| FM1 dump, configuration, identity or calibration | Excluded |
+| Stock-derived addresses/disassembly and comparison scripts | Excluded |
+| Hardware, flash writer or updater | Excluded |
+
+"Clean-lab" here means a controlled-input, reproducible source lab. The author
+has already examined SDK and stock-loader material earlier in this project;
+this is not a claim of independent clean-room reverse engineering. Synthetic
+addresses in the fixtures do not describe FM1's actual layout. Original project
+source retains the repository's GPL-3.0-or-later notice. Future dependencies and
+their provenance must be recorded before they enter the lab.
+
+## Following milestones, one at a time
+
+1. **Portable validation lab:** build/test scenarios and target core object.
+2. **Target entry and linker scaffold:** derive memory/stack reservations from
+   public WL82 interfaces; link and inspect an offline executable. Record the
+   unresolved ROM-entry ABI explicitly; a linked scaffold alone cannot boot.
+3. **Hardware initialization:** establish exact clock, interrupt, cache and
+   flash-access contracts; implement original adapters for documented behavior.
+4. **Application handoff:** acquire/validate local board metadata, map decoded
+   application bytes and verify the public SDK ABI. Do not invent undocumented
+   extension fields or reuse unknown ROM addresses.
+5. **Packaging and recovery:** define a reproducible image path without private
+   backups, an independent recovery entry, bounded update writes and interrupted
+   update behavior. Preserve each unit's local identity/calibration.
+6. **Bench qualification:** inspect one complete candidate and recovery plan,
+   obtain authorization for that exact image, then test cold boot, recovery,
+   playback and USB on hardware. The existing application-only protected writer
+   cannot install a replacement bootloader.
+
+Each milestone needs its own evidence before it is called complete. SDK
+declarations alone do not establish missing initialization implementations.
+The player still separately depends on its pinned SDK libraries/toolchain.
+
+## Step 1 results (2026-10-01)
+
+Both standalone host tests pass, including all 4096 fixture offsets and the
+three visible scenarios. The WL82 core compiles with warnings treated as
+errors, produces a 732-byte object and has no undefined symbols. The existing
+validation/handoff host test also passes after the module split. No target
+startup/hardware code has been added and no device was operated in this step.
