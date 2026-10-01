@@ -73,6 +73,12 @@ hashes and static audit. The application payload is **not a flash/update file**.
 The audit retains the SDK startup/integrity checks and IRQ-based UBOOT recovery.
 There is no firmware flasher or stock-layout packager in this repository.
 
+Our [source bootloader work](firmware/bootloader/README.md) now includes an
+SDK-independent, host-tested application validation and handoff core. Target
+startup, flash access, recovery and public image packaging remain unimplemented;
+it is not a bootable replacement loader. The [offline SDK comparison](BOOTLOADER_STUDY.md)
+records why the available vendor user-boot source cannot link on its own.
+
 An optional composite USB Audio Class1 + CDC profile adds computer playback
 through FM1 and MDX recording to the computer at48kHz stereo16-bit PCM:
 

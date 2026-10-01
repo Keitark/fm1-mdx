@@ -4,6 +4,11 @@
 not available.** No device was queried, reset, flashed, or otherwise operated.
 The existing MDX firmware candidate and preserved device rollback are separate.
 
+For the subsequent public-release requirement, see our
+[source bootloader implementation](firmware/bootloader/README.md). Its original
+validation/handoff core does not use the missing archive. It is not a linked
+target loader; the study results below still describe the vendor build attempt.
+
 ## Inputs and build result
 
 Jieli's [official user-boot project](https://github.com/Jieli-Tech/fw-Bootloader)
@@ -26,8 +31,9 @@ cannot be established without that archive and a complete link attempt.
 The archive would supply essential startup, architecture/clock, filesystem,
 application handoff, and upgrade implementations; declarations alone cannot
 replace it. Other chip families' archives are not WL82 replacements. Completion
-requires the matching official WL82 library and review of its ROM-symbol
-requirements, followed by a fresh linked-code review. This study does not invent
+of this vendor-based build requires the matching official WL82 library and
+review of its ROM-symbol requirements, followed by a fresh linked-code review.
+This study does not invent
 those missing implementations or symbol addresses.
 
 There is no linked `uboot.elf`, freshly built `uboot.boot`, full-device image,
