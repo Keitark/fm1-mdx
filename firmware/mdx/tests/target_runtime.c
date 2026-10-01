@@ -43,6 +43,7 @@ void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *s){(void)s;}
 void fm1_wl82_keyscan_async_kick(fm1_wl82_keyscan *s){s->sequence++;}
 int fm1_wl82_keyscan_async_raw(fm1_wl82_keyscan *s,uint8_t rows[11]){if(ms>=70)return FM1_NES_IO_ERROR;if(s->sequence==s->consumed)return FM1_NES_BUSY;s->consumed=s->sequence;memset(rows,0x3f,11);return 0;}
 void fm1_wl82_keyscan_stop(fm1_wl82_keyscan *s){s->running=0;key_stopped++;}
+void fm1_wl82_keyscan_lights(fm1_wl82_keyscan *s,uint64_t slots){(void)s;(void)slots;}
 uint32_t fm1_volume_test_read(uint32_t a){if(a==0x13100)return adc|0x80;if(a==0x13104)return 256;return 0;}
 void fm1_volume_test_write(uint32_t a,uint32_t v){if(a==0x13100)adc=v&~0xc0u;}
 static char answer[200];
@@ -55,13 +56,15 @@ void os_time_dly(int n){
     for(i=0;i<(unsigned)n;i++) {
         ms++;if(tick)tick(0);if(keyirq)keyirq();if(alink)alink();
         if(ms==20){CHECK(player.mute_mask==0x100);command("MDX MUTE 00 1");}
+        if(ms==21)command("MDX GUIDE 1");
         if(ms==22)command("MDX NOTE 3c 1");
-        if(ms==35){CHECK(player.live_note[0]==60);CHECK(player.mute_mask&1);}
+        if(ms==35){CHECK(player.live_note[0]==60);CHECK(player.mute_mask&1);CHECK(guide_enabled && guide.active);command("MDX GUIDE");CHECK(strstr(answer,"enabled=1"));}
         if(ms==40)command("MDX STOP");
         if(ms==45){CHECK(!control.running && !control.request);command("MDX BEGIN 00000010 00000000");CHECK(upload.active);}
         if(ms==46){command("MDX ABORT");CHECK(!upload.active);command("MDX DEMO");}
         if(ms==55)encoders.count[0]++;
-        if(ms==65){CHECK(player.selected==1);command("MDX INPUT");CHECK(strstr(answer,"enc=1,0,0,0,0,0,0"));}
+        if(ms==56){CHECK(player.selected==0);encoders.count[0]++;}
+        if(ms==65){CHECK(player.selected==1);command("MDX INPUT");CHECK(strstr(answer,"enc=2,0,0,0,0,0,0"));}
         if(ms==80){CHECK(control.running && !player.error);CHECK(mdx_volume.valid && mdx_volume.running && mdx_volume.target==32);CHECK(key_error==FM1_NES_IO_ERROR && !scan_enabled);command("MDX VOLUME");CHECK(strstr(answer,"target=32") && strstr(answer,"running=1"));fm1_peripheral_session_cancel();CHECK(control.running);}
         if(ms==100)fm1_peripheral_cancel();
         CHECK(ms<200);
@@ -71,7 +74,7 @@ static void panel_tests(void) {
     unsigned i;
     CHECK(!fm1_mdx_load(&player,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size));
     control.available=control.running=1;
-    panel_edges(UINT64_C(1)<<3,0,UINT64_C(1)<<3);CHECK(!control.request); /* SEL */
+    panel_edges(UINT64_C(1)<<3,0,UINT64_C(1)<<3);CHECK(control.request==FM1_MDX_GUIDE && control.a==1);control.request=0; /* SEL */
     panel_edges(UINT64_C(1)<<12,0,UINT64_C(1)<<12);CHECK(control.request==FM1_MDX_STOP);control.request=0;
     control.running=0;panel_edges(UINT64_C(1)<<12,0,0);CHECK(control.request==FM1_MDX_DEMO);control.request=0;control.running=1;
     panel_edges(4,0,4);CHECK(control.request==FM1_MDX_MUTE);control.request=0;
@@ -96,6 +99,9 @@ static void panel_tests(void) {
     memcpy(upload.bytes+12+fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size);
     upload.mdx_size=(uint32_t)fm1_demo_mdx_size;upload.pdx_size=(uint32_t)fm1_demo_pdx_size;
     action(FM1_MDX_PLAY,0,0);CHECK(!player.mute_mask && uploaded_song);
+    action(FM1_MDX_GUIDE,1,0);CHECK(guide_enabled && (player.mute_mask&(1u<<player.selected)));
+    guide_update(2048,2);CHECK(guide.active);
+    action(FM1_MDX_GUIDE,0,0);CHECK(!guide_enabled && !guide.active);
     silence();keyboard_octave=0;memset(&control,0,sizeof(control));
 }
 static void audio_boundary_tests(void) {

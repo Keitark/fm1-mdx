@@ -13,6 +13,8 @@ typedef struct {
     uint16_t mutes;
     uint8_t selected,running,tracks,uploaded;
     int8_t octave;
+    uint8_t guide;
+    int8_t guide_note,guide_direction;
     uint32_t seconds;
 } fm1_screen_view;
 typedef int (*fm1_screen_snapshot)(void *,fm1_screen_view *,uint32_t *);

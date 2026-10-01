@@ -16,7 +16,7 @@ unsigned replay_usb_errors(void);
 void replay_usb_note_sample(int16_t,int16_t);
 volatile uint32_t fm1_display_stage;
 volatile int fm1_display_error;
-static unsigned ms,duration,stress,wrap_seeded,restarts,producer_stalls,song_restarts;
+static unsigned ms,duration,stress,wrap_seeded,restarts,producer_stalls,song_restarts,guide_test,guide_started;
 static int drift;
 static unsigned lcd_us,lcd_command,lcd_y,checked_frame;
 static uint8_t lcd_buffer[240][480],previous_parts[16];
@@ -87,11 +87,13 @@ void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *s){(void)s;}
 void fm1_wl82_keyscan_async_kick(fm1_wl82_keyscan *s){s->sequence++;}
 int fm1_wl82_keyscan_async_raw(fm1_wl82_keyscan *s,uint8_t rows[11]){if(s->sequence==s->consumed)return FM1_NES_BUSY;s->consumed=s->sequence;memset(rows,0x3f,11);return 0;}
 void fm1_wl82_keyscan_stop(fm1_wl82_keyscan *s){s->running=0;}
+void fm1_wl82_keyscan_lights(fm1_wl82_keyscan *s,uint64_t slots){(void)s;(void)slots;}
 uint32_t fm1_volume_test_read(uint32_t a){if(a==0x13100)return adc|0x80;if(a==0x13104)return 256;return 0;}
 void fm1_volume_test_write(uint32_t a,uint32_t v){if(a==0x13100)adc=v&~0xc0u;}
 static void advance(unsigned n){
     while(n--){
         ms++;
+        if(guide_test && !guide_started && ms>=50 && uploaded_song && !control.request){control.request=FM1_MDX_GUIDE;control.a=1;guide_started=1;}
         if(duration>=600&&ms%360000==0){CHECK(!control.request);control.request=FM1_MDX_PLAY;song_restarts++;}
         if(stress&&ms%15000==0){replay_usb_stream(0);restarts++;}
         if(stress&&ms%15000==5&&ms>15000)replay_usb_stream(1);
@@ -119,9 +121,10 @@ static void header(FILE *f,unsigned bytes){
 }
 int main(int argc,char **argv){
     size_t mn,pn;unsigned char *m=0,*p=0;FILE *f;char usb[200];unsigned errors;
-    CHECK(argc==7);duration=(unsigned)atoi(argv[4]);drift=atoi(argv[5]);stress=!strcmp(argv[6],"stress");
+    CHECK(argc==7 || argc==8);duration=(unsigned)atoi(argv[4]);drift=atoi(argv[5]);stress=!strcmp(argv[6],"stress");
     CHECK(duration>=1&&duration<=3600&&drift>=-1000&&drift<=1000);
-    CHECK(stress||!strcmp(argv[6],"normal"));
+    CHECK(stress||!strcmp(argv[6],"normal")||!strcmp(argv[6],"guide"));
+    if(!strcmp(argv[6],"guide"))guide_test=1;
     if(!strcmp(argv[1],"--demo")){mn=fm1_demo_mdx_size;pn=fm1_demo_pdx_size;m=(unsigned char *)fm1_demo_mdx;p=(unsigned char *)fm1_demo_pdx;}
     else {m=read_file(argv[1],&mn);p=read_file(argv[2],&pn);}
     CHECK(mn+pn+12<=sizeof(upload.bytes));memcpy(upload.bytes+12,m,mn);memcpy(upload.bytes+12+mn,p,pn);
@@ -139,5 +142,8 @@ int main(int argc,char **argv){
     if(strcmp(argv[1],"--demo")){free(m);free(p);}
     CHECK(!player.error&&!lcd_error&&!audio_error);if(!stress)CHECK(!underruns&&!errors);
     if(stress&&duration>=65)CHECK(wrap_seeded&&restarts&&producer_stalls&&rebuffer_events);
+    if(guide_test){CHECK(guide_started && guide.active && !guide.error && guide.missed>0);fprintf(stderr,"Guide: missed=%u next=%d error=%d\n",guide.missed,fm1_guide_note(&guide),guide.error);}
+    if(argc==8){unsigned y,x;uint8_t row[240];FILE *shot=fopen(argv[7],"wb");CHECK(shot);
+        for(y=0;y<240;y++){fm1_screen_indices(&screen_shown,y,row);for(x=0;x<240;x+=2)fputc((row[x]<<4)|row[x+1],shot);}CHECK(!fclose(shot));}
     return 0;
 }

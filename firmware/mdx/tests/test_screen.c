@@ -44,7 +44,7 @@ static void dirty_rows(void) {
     fm1_screen_view a={0},b;uint8_t old[480],next[480],dirty[240];unsigned trial,y,field;uint32_t seed=42;
     strcpy(a.title,"OLD TITLE");strcpy(a.subtitle,"OLD SUBTITLE");strcpy(a.credit,"Ar.By Artist");
     for(trial=0;trial<420;trial++) {
-        b=a;field=trial%14;seed=seed*1664525u+1013904223u;
+        b=a;field=trial%17;seed=seed*1664525u+1013904223u;
         switch(field) {
         case 0:b.seconds=seed;break;case 1:b.running^=1;break;
         case 2:b.title[seed%32]=(char)('A'+seed%26);break;
@@ -57,6 +57,8 @@ static void dirty_rows(void) {
         case 11:b.spectrum_hold[seed%32]=(uint8_t)seed;break;
         case 12:b.credit[seed%127]=(char)('A'+seed%26);break;
         case 13:b.credit_scroll=(uint16_t)(seed%600);break;
+        case 14:b.guide^=1;break;case 15:b.guide_note=(int8_t)(seed%109);break;
+        case 16:b.guide_direction=(int8_t)(seed%3-1);break;
         }
         fm1_screen_dirty_rows(&a,&b,dirty);
         for(y=0;y<240;y++){fm1_screen_row(&a,y,old);fm1_screen_row(&b,y,next);

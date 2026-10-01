@@ -34,7 +34,23 @@ unit-specific flash images.
 OCT−/OCT+ shift new keyboard notes by an octave, bounded to−3..+2. A held note
 keeps its original pitch until released. FX toggles karaoke mute; PLAY/STOP
 toggles playback. The SELECT knob beside master volume selects an FM track
-(encoder0, pending physical confirmation). The SEL button is unassigned.
+(encoder0). The selector correction combines two decoded contact edges into
+one track step, retaining partial/reversed movement and fast turns. Physical
+detent behavior of this new correction is awaiting a bench check.
+
+SEL toggles the new **timed guide mode** (candidate, not yet installed). Enabling
+it mutes the selected FM part's song triggers and lights its next keyboard note.
+OCT-/OCT+ also lights when an octave shift is required. The footer shows the
+next note and octave direction. A matching key-down immediately shows the next
+candidate; a wrong note or key-up does not advance it. If you miss the note, the
+guide moves on at its scheduled DAC time. Accompaniment keeps playing normally.
+Guide-off leaves karaoke mute as set; use FX to unmute. After selecting another
+part, use FX to mute that part for guidance. Stop clears the lights; restarting
+with guide enabled mutes the initially selected FM part again. Guidance covers
+FM1-8, not PCM sample keys; the physical keyboard range is MIDI17-103.
+USB equivalents: `guide --enable 1`, `guide --enable 0`, or `guide` for status,
+using `python firmware/mdx/usb_client.py ... --port <FM1 CDC port>`.
+
 Slots14–40 are the keyboard, MIDI53–79 before octave shifting. The panel order
 is slots0/1 for OCT−/OCT+,2..7 for FX/SEL/ENV/LFO/EDIT/GLO, and8..13 for
 HOME/SAVE/ARP/SEQ/PLAY-STOP/REC. FX/SEL are user-observed; the remaining names

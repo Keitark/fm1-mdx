@@ -97,12 +97,31 @@ int main(void){
     pump(&s,1100);CHECK(!fm1_wl82_keyscan_async_raw(&s,out) && !memcmp(out,save,11));
     memset(matrix,0x3f,11);pump(&s,11);
     CHECK(!fm1_wl82_keyscan_async_raw(&s,out) && !fm1_stock_decode_keys(out));
+    /* One complete LED request, committed on next sweep. Key acquisition and
+       DMA/latch order remain the same with illuminated note/octave keys. */
+    fm1_wl82_keyscan_lights(&s,(UINT64_C(1)<<14)|1|2);
+    CHECK(s.led_requested[3]==2 && s.led_requested[0]==2 && s.led_requested[1]==2);
+    for(i=0;i<11;i++)CHECK(!s.led_rows[i]);
+    fm1_wl82_keyscan_async_kick(&s);complete();fm1_wl82_keyscan_async_step(&s);
+    for(i=1;i<11;i++){
+        unsigned row=s.row,v=s.led_rows[row];
+        complete();fm1_wl82_keyscan_async_step(&s);
+        CHECK((gpio[0]&0x600u)==(((v&4)?0x200u:0)|((v&8)?0x400u:0)));
+        CHECK((gpio[0x1c0/4]&0x240u)==(((v&1)?0x40u:0)|((v&2)?0x200u:0)));
+    }
+    CHECK(!fm1_wl82_keyscan_async_raw(&s,out) && !fm1_stock_decode_keys(out));
+    fm1_wl82_keyscan_lights(&s,0);pump(&s,11);
+    CHECK(!(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u));
+    CHECK(!fm1_wl82_keyscan_async_raw(&s,out));
     /* A partial sweep cannot replace the last complete snapshot. */
+    fm1_wl82_keyscan_lights(&s,UINT64_C(0x1ffffffffff));
     matrix[4]=0;pump(&s,5);memcpy(save,out,11);
+    CHECK((gpio[0]&0x600u) || (gpio[0x1c0/4]&0x240u));
     CHECK(fm1_wl82_keyscan_async_raw(&s,out)==FM1_NES_BUSY && !memcmp(out,save,11));
     ticks=10000+FM1_KEYSCAN_CLOCK_QUANTUM_US-1;CHECK(fm1_wl82_keyscan_async_raw(&s,out)==FM1_NES_BUSY);
     ticks=10000+FM1_KEYSCAN_CLOCK_QUANTUM_US;CHECK(fm1_wl82_keyscan_async_raw(&s,out)==FM1_NES_IO_ERROR);
     CHECK(!s.running && !con && !pending && !memcmp(out,save,11));
+    CHECK(!(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u));
     CHECK(s.failure.valid && s.failure.reason==4 && s.failure.phase==2 && s.failure.dma_count==2);
     w=writes;r=reads;fm1_wl82_keyscan_async_step(&s);fm1_wl82_keyscan_stop(&s);
     CHECK(writes==w && reads==r);

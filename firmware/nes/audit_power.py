@@ -152,7 +152,9 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
         # +240/+252/+276 under ota_status0x1c4e2d0. Power body stays pinned.
         # Cadence link: ota_status0x1c4e2d0; reviewed stores0x20012d4
         # b[++r1=244],0x2001302 [r8+256],0x20015be [r8+280].
-        require(layout in ((224,236,260),(228,240,264),(232,244,268),(240,252,276),(244,256,280),(260,272,296),(284,296,320)),
+        # Guide link ota_status0x1c4f410: same stores resolve to+248/+260/+284
+        # (5a ee18 0f, d1 ec85 00, d1 ec8d 31); body otherwise unchanged.
+        require(layout in ((224,236,260),(228,240,264),(232,244,268),(240,252,276),(244,256,280),(248,260,284),(260,272,296),(284,296,320)),
                 'Composite audio power merged-global layout changed')
     for off,target,prefix,regbits,historical in (
         (0x0d6,'lrc.0',b'\x5a\xee',0x10,bytes.fromhex('5a ee 14 04')),
@@ -162,12 +164,14 @@ def audit_power(symbols, sections, code_at, required=False, usb_only=False, usb_
         delta=value(target)-base
         if usb_audio:
             require(delta%4==0,'Composite audio power state alignment changed')
-        elif usb_only and delta in (256,260):
+        elif usb_only and delta in (256,260,268):
             # Screenshot CDC link: reviewed sys_low_power store d1 ec 81 30
             # at power_init+0x3c0, with LRC globals at+220/+232.
             # Packet CDC link: ota_status0x1c4c060; reviewed stores target
             # +224/+236/+260 (power_init+0x3c0 d1 ec 85 30).
-            require(off==0x3c0 and layout in ((220,232,256),(224,236,260)),
+            # Guide CDC link: ota_status0x1c4d1c0, +232/+244/+268;
+            # reviewed0x20015be store d1 ec8d 30, same power body.
+            require(off==0x3c0 and layout in ((220,232,256),(224,236,260),(232,244,268)),
                     'Screenshot CDC power merged-global layout changed')
         else:
             require(0<=delta<256 and delta%4==0,'Power merged-global offset outside reviewed encoding')

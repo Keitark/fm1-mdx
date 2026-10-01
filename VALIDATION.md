@@ -625,3 +625,65 @@ inspected:32 spectrum bands,16 inline FM/PCM parts, embedded BY VEYRLEN credit,
 correct240x240 layout. This observes logical renderer output, not panel RGB444
 colour fidelity. Private screenshot stays outside Git. Source review is tracked
 in draft PR#17; subjective physical meter/audio acceptance remains open.
+
+## Karaoke guide candidate, 2026-10-02 (not installed)
+
+The selector previously treated every stable quadrature contact edge as a whole
+track step, explaining the user's two-track-per-detent report. The MDX control
+adapter now groups two contact edges, retains half steps across polls, cancels
+reversals, and handles bursts without throwing away the count delta. The raw
+scanner counters keep their original edge semantics. Detent scaling is based on
+the user-observed two-step behavior and still requires a physical check.
+
+SEL toggles a timed guide. Enabling it mutes the selected FM part. It previews
+actual future key-ons with a silent copy of the complete MDX sequencer, retaining
+cross-track synchronization, tempo, repeats, rests, key-on delay and ties. No
+preview callback touches YM2151, PCM, live registers or playback state. Two
+candidates are kept ready, and lookahead is limited to two MDX ticks per owner
+iteration after the audio reserve reaches1470 frames. Disabled mode runs no
+lookahead. Matching note-down consumes one candidate; wrong pitches and key-up
+leave it unchanged. Unplayed candidates expire at their scheduled audible DAC
+position, accounting for queued audio. Accompaniment never waits for input.
+
+Note and OCT-/OCT+ LEDs use the existing scanner's four multiplex columns,
+without another timer, SPI transfer or synth owner. Requests publish atomically
+at sweep boundaries. Stop and scanner failure blank outputs. Default inactive
+LED rows add no GPIO operations to the interrupt. The physical keyboard keeps
+its existing MIDI17-103 reach; notes outside it appear on screen without a
+misleading key or octave light. Disabling guidance leaves karaoke mute set.
+
+Routing evidence: FM1_010 LED cell table at0204630a; setter0201e83e encodes
+row=cell>>2 and column=cell&3; scanner ISR01c045ce blanks PH6/PH9/PA9/PA10,
+latches, then drives those columns from the current row bitmap. Note handler
+020233f6 uses button slot+1. OCT-/OCT+ use LED indices0/1; indicator12 is not a
+keyboard LED, so PLAY/STOP, REC and note slots skip it. This is static routing
+provenance, not physical LED acceptance. Source contains the mapping and our
+implementation, not stock instructions or firmware assets.
+
+Validation: `python scripts/build.py host` passes17 CTests,7 client checks,
+4 screenshot checks and the descriptor-tree check. Guide traces match an
+independent execution of the playback sequencer for pitches/timestamps, loops,
+delayed key-on, synchronization, rests, tempo changes and ties. Preview-on and
+preview-off produce bit-identical audio in the regression. Actual scanner MMIO
+model checks lit rows, latch/DMA order, unchanged keys and failure blanking.
+
+The current30MHz/RGB444 USB-audio profile links with the pinned SDK and passes
+static startup/power/USB ownership audit. Application195568 bytes, SHA256
+94af294298a2873d1ef1c609ff2f99e3295c3f4fbac4982c0cb2b55cff2c5a25.
+Reviewed LTO relocation changes: trace=ota_status+456 with unchanged46-byte
+wrapper, and power globals at+248/+260/+284 with the pinned initializer body.
+Exact destination/opcode checks remain; no broad relocation relaxation.
+
+The integrated Ray Force guide replay completes180 virtual seconds at+500ppm,
+5400 complete LCD views (30.00FPS),1491 expired guide candidates, next MIDI67,
+zero guide/synth/USB/peripheral errors and no missing audio/rebuffer events.
+The frozen logical screen was visually inspected. This model does not measure
+PI32 CPU cost, panel LEDs/brightness or physical detents. The installed firmware
+and bootloader were not changed; hardware acceptance is pending.
+
+The standard CDC-only/RGB565 build also links and passes its static audit
+(application191920 bytes, SHA256
+fc2f15bfcf2111c8667d2be6fe6637173b3329e47c7feb3d585c6dc765bf6e4a).
+Its reviewed trace offset is+440 and power tuple+232/+244/+268. The original
+passes, and changed trace, LRC and low-power destinations are rejected in three
+offline corruption checks. The composite profile passes all11 linked checks.

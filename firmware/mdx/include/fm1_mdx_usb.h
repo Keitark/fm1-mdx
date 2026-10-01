@@ -8,7 +8,7 @@ typedef struct {
     uint32_t length,received,crc,expected,last_ms,mdx_size,pdx_size;
     unsigned active,ready;
 } fm1_mdx_upload;
-enum { FM1_MDX_STOP=1,FM1_MDX_PLAY,FM1_MDX_DEMO,FM1_MDX_SELECT,FM1_MDX_MUTE,FM1_MDX_NOTE };
+enum { FM1_MDX_STOP=1,FM1_MDX_PLAY,FM1_MDX_DEMO,FM1_MDX_SELECT,FM1_MDX_MUTE,FM1_MDX_NOTE,FM1_MDX_GUIDE };
 typedef void (*fm1_mdx_reply)(void *,const char *);
 typedef struct {
     void *context;

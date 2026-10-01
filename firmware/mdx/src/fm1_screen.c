@@ -32,6 +32,7 @@ static unsigned glyph(char c,unsigned col) {
     case '(':return col==1?28:col==2?34:col==3?65:0;
     case ')':return col==1?65:col==2?34:col==3?28:0;
     case '&':{static const uint8_t g[5]={54,73,85,34,80};return g[col];}
+    case '#':return col==1 || col==3?127:20;
     case '?':{static const uint8_t g[5]={2,1,81,9,6};return g[col];}
     default:return 0;}
 }
@@ -120,8 +121,14 @@ void fm1_screen_indices(const fm1_screen_view *v,unsigned y,uint8_t r[240]) {
             rect(r,y,x+1,(int)y,12,1,plot_color(v->parts[i],v->hold[i],PART_TOP+PLOT_HEIGHT-1-y,muted));
         text(r,y,x+1,153,names[i],1,muted?15:selected?8:6);
     }
-    if(y>=222 && y<229){snprintf(s,sizeof(s),"FM%u %s  OCT%+d",v->selected+1,(v->mutes&(1u<<v->selected))?"KARAOKE":"MDX",v->octave);text(r,y,8,222,s,1,5);}
-    rect(r,y,0,233,240,7,1);text(r,y,3,233,"SELECT PART  FX MUTE  PLAY/STOP",1,6);
+    if(y>=222 && y<229){
+        if(v->guide && v->guide_note>=0){
+            static const char *notes[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+            snprintf(s,sizeof(s),"FM%u NEXT %s%d %s",v->selected+1,notes[v->guide_note%12],v->guide_note/12-1,v->guide_direction>0?"OCT+":v->guide_direction<0?"OCT-":"");
+        } else snprintf(s,sizeof(s),"FM%u %s OCT%+d",v->selected+1,v->guide?"GUIDE ...":(v->mutes&(1u<<v->selected))?"KARAOKE":"MDX",v->octave);
+        text(r,y,8,222,s,1,5);
+    }
+    rect(r,y,0,233,240,7,1);text(r,y,3,233,"FX MUTE SEL GUIDE PLAY/STOP",1,6);
 }
 void fm1_screen_row(const fm1_screen_view *v,unsigned y,uint8_t out[480]) {
     uint8_t r[240];unsigned x;fm1_screen_indices(v,y,r);
@@ -162,7 +169,7 @@ int fm1_screen_row_changed(const fm1_screen_view *a,const fm1_screen_view *b,uns
         }
         return 0;
     }
-    if(y>=222 && y<229)return a->selected!=b->selected || a->mutes!=b->mutes || a->octave!=b->octave;
+    if(y>=222 && y<229)return a->selected!=b->selected || a->mutes!=b->mutes || a->octave!=b->octave || a->guide!=b->guide || a->guide_note!=b->guide_note || a->guide_direction!=b->guide_direction;
     return 0;
 }
 static void dirty_plot(const fm1_screen_view *a,const fm1_screen_view *b,unsigned part,uint8_t rows[240]) {
