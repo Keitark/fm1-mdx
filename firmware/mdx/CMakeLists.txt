@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(fm1_mdx C)
 enable_testing()
+add_subdirectory(../bootloader ${CMAKE_CURRENT_BINARY_DIR}/bootloader)
 file(GLOB VENDOR_SOURCES CONFIGURE_DEPENDS vendor/retrofm/*.c vendor/mdxtools/*.c)
 add_library(fm1_mdx src/fm1_mdx.c src/fm1_mdx_mix.c src/fm1_mdx_usb.c src/fm1_screen.c src/fm1_meters.c ${VENDOR_SOURCES} samples/demo.c)
 target_include_directories(fm1_mdx PUBLIC include vendor/retrofm vendor/mdxtools)
