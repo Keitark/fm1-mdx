@@ -83,6 +83,7 @@ def control_reply(port,command):
     action=command.split()[1]
     prefix={'STATUS':'MDX running=','AUDIO':'MDX AUDIO ','USB':'MDX USB ',
             'TIMING':'MDX TIMING ','DISPLAY':'MDX DISPLAY ','VOLUME':'MDX VOLUME ','SCAN':'MDX SCAN ','INPUT':'MDX INPUT '}.get(action,'OK MDX QUEUED')
+    if command=='MDX GUIDE':prefix='MDX GUIDE '
     return exchange(port,command,expected_prefix=prefix)
 
 def send(port,data):

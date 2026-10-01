@@ -18,6 +18,14 @@ class Pipe:
     def __exit__(self,*args):
         self.proc.stdin.close();self.proc.wait(timeout=5);self.proc.stdout.close()
 class ClientTests(unittest.TestCase):
+    def test_guide_query_and_action_use_distinct_replies(self):
+        with patch.object(client,'exchange',return_value='reply') as exchange:
+            client.control_reply(object(),'MDX GUIDE')
+            self.assertEqual(exchange.call_args.kwargs['expected_prefix'],'MDX GUIDE ')
+            for command in ('MDX GUIDE 0','MDX GUIDE 1'):
+                client.control_reply(object(),command)
+                self.assertEqual(exchange.call_args.kwargs['expected_prefix'],'OK MDX QUEUED')
+
     def test_audio_reply_ignores_stale_status(self):
         class Port:
             def __init__(self):self.data=bytearray(b'MDX running=1 underruns=5\nMDX AUDIO under=0,0\n')

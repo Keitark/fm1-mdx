@@ -626,7 +626,7 @@ correct240x240 layout. This observes logical renderer output, not panel RGB444
 colour fidelity. Private screenshot stays outside Git. Source review is tracked
 in draft PR#17; subjective physical meter/audio acceptance remains open.
 
-## Karaoke guide candidate, 2026-10-02 (not installed)
+## Karaoke guide candidate, 2026-10-02
 
 The selector previously treated every stable quadrature contact edge as a whole
 track step, explaining the user's two-track-per-detent report. The MDX control
@@ -678,8 +678,8 @@ The integrated Ray Force guide replay completes180 virtual seconds at+500ppm,
 5400 complete LCD views (30.00FPS),1491 expired guide candidates, next MIDI67,
 zero guide/synth/USB/peripheral errors and no missing audio/rebuffer events.
 The frozen logical screen was visually inspected. This model does not measure
-PI32 CPU cost, panel LEDs/brightness or physical detents. The installed firmware
-and bootloader were not changed; hardware acceptance is pending.
+PI32 CPU cost, panel LEDs/brightness or physical detents. At this candidate
+validation stage no firmware had been written; installation is recorded below.
 
 The standard CDC-only/RGB565 build also links and passes its static audit
 (application191920 bytes, SHA256
@@ -687,3 +687,31 @@ fc2f15bfcf2111c8667d2be6fe6637173b3329e47c7feb3d585c6dc765bf6e4a).
 Its reviewed trace offset is+440 and power tuple+232/+244/+268. The original
 passes, and changed trace, LRC and low-power destinations are rejected in three
 offline corruption checks. The composite profile passes all11 linked checks.
+
+### Approved guide installation and Ray Force
+
+Implementation commit31b6fd5 was installed after explicit candidate approval.
+All48 application/directory sectors and one full1MiB readback match image
+7dabf3790e75cfff4a995583528d6ca3873595e01ce3c01ed7ad38223b68ee1d.
+The previous installed image4059dbd24bbe3d80794152a0140ab83cf1cc50fdcb15fff3052b9740b73b4f44
+is preserved privately for rollback. Boot and configuration areas were preserved.
+
+One reset was sent. The known UTF8 helper log-decoding error recurred; CDC
+observation confirmed boot and resolved it without another reset. COM5 reports
+MDX-KARAOKE/1, frames587712 to1029312 advancing and zero underruns.
+Ray Force MDX/PDX uploaded with CRC/offset acknowledgements, then playback was
+started. The built-in demo's PCM9 mute was cleared for the external song.
+Guide mode was enabled on FM1: live status reports enabled1, selected0, note74,
+hits0, missed742, error0, mute0001. The scanner reports enabled1,3049343
+completions and failure reason0. Audio frames advance to12852416 with zero
+synth/peripheral errors or underruns. USB capture was inactive during these
+checks, so this does not qualify recorded audio or USB capture stability.
+
+The PC client guide query initially expected an action acknowledgement; it now
+accepts the distinct MDX GUIDE status prefix while GUIDE0/1 still require the
+queued-action reply. Eight client tests pass, including this regression.
+The complete host validation also passes17 CTests,4 screenshot checks and the
+descriptor-tree check after the client correction.
+Physical LED operation and one-track-per-detent acceptance await the user's
+observation. Guidance starts disabled on boot, including the built-in sample;
+SEL enables it and mutes the selected FM part.
