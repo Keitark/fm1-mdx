@@ -68,7 +68,9 @@ void fm1_wl82_keyscan_lights(fm1_wl82_keyscan *,uint64_t slots);
    transfer duration. Call regularly; stop/reset/recovery are task-only. */
 int fm1_wl82_keyscan_async_start(fm1_wl82_keyscan *,void *,uint32_t (*)(void *));
 void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *);
-/* PACED mode stops after each sweep, leaving the latch high and no DMA active.
+/* PACED mode stops after each sweep, leaving the latch high, LEDs blank and no
+   DMA active. The final row's LED pulse is deferred to the next kick while its
+   selection remains latched, so it receives one transfer interval like others.
    A periodic caller (under the same lock) kicks exactly one new sweep. It must
    run independently of NES frames, normally every 1ms. No waits/clock reads;
    duplicate kicks during a transfer and kicks after stop do nothing. The

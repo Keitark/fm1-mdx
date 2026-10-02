@@ -55,6 +55,11 @@ Guide-off leaves karaoke mute as set; use FX to unmute. Guidance follows the
 karaoke part when SELECT moves its mute. Stop clears the lights; restarting
 with guide enabled mutes the initially selected FM part again. Guidance covers
 FM1-8, not PCM sample keys; the physical keyboard range is MIDI17-103.
+The pending combined correction blanks LEDs during the paced scan idle and
+lights the final row during the next existing transfer. All rows receive one
+modeled transfer interval instead of the final row staying lit through idle.
+Input pacing and SPI transfer count are unchanged; physical brightness still
+requires a check after installation.
 USB equivalents: `guide --enable 1`, `guide --enable 0`, or `guide` for status,
 using `python firmware/mdx/usb_client.py ... --port <FM1 CDC port>`.
 

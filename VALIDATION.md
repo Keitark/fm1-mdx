@@ -745,3 +745,34 @@ with boot/configuration areas preserved. Installed guide image
 7dabf3790e75cfff4a995583528d6ca3873595e01ce3c01ed7ad38223b68ee1d
 is verified and preserved privately as rollback. No device write was performed
 for this correction; physical playback/meter acceptance remains pending.
+
+## Equal LED dwell, 2026-10-02 (combined candidate, not installed)
+
+The paced scanner drove row10 LEDs at the end of a burst, then left them on
+during the idle until the next1ms tick. Rows0-9 were only driven around one
+two-byte scan transfer. The actual scanner MMIO model reproduces this retained
+row10 output. The correction leaves all LEDs blank while paused, then drives
+the still-latched row10 at the next kick during the existing row0 transfer.
+Its completion blanks the LEDs before latching row0, as on every other row.
+No additional timer, transfer, DMA word, IRQ, busy wait or synth owner is added.
+The latch order, row count, key acquisition and1ms sweep pacing are retained.
+
+The exposure regression models an equal16-unit transfer for each row and long
+1000-unit idle gaps. Every requested mapped row/column receives exactly16 units;
+idle contributes zero. Each sweep still arms exactly11 words. Latch edges
+require all LED columns blank. This regression fails on the preserved previous
+scanner and passes on the correction. The full host run passes17 CTests,
+8 client checks,4 screenshot checks and the descriptor-tree check, including
+stop/failure blanking, key acquisition, guide and karaoke-selection regressions.
+This measures the model, not real IRQ jitter, GPIO current or visual brightness.
+
+The pinned USB-audio/30MHz/RGB444 SDK link/static audit and all11 linked corruption
+checks pass. Application195664 bytes, SHA256
+3dd7a83daac9a35935672706d8e6f13f904c1dcbeecaf72d981dfb0a34ea85bb.
+Combined full-image SHA256
+c6692fad854b0d4018b8ae5da78deacb3fa25021e25dab5b9ca87c5457061a84.
+This supersedes the uninstalled selection-only image581bcbfb... and includes
+that correction. The offline48-sector plan preserves boot/configuration areas.
+The verified installed image7dabf3790e75cfff4a995583528d6ca3873595e01ce3c01ed7ad38223b68ee1d
+remains preserved for rollback. No device write was performed; physical LED
+brightness, playback and restored meters await authorized installation.

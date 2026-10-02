@@ -59,8 +59,8 @@ void fm1_wl82_keyscan_lights(fm1_wl82_keyscan *s,uint64_t slots) {
     for(i=0;i<11;i++)s->led_requested[i]=0;
     if(s->running)for(i=0;i<41;i++)if((slots>>i)&1)s->led_requested[cells[i]>>2]|=(uint8_t)(1u<<(cells[i]&3));
 }
-static void lights_row(fm1_wl82_keyscan *s){
-    unsigned v=s->led_rows[s->row];
+static void lights_row(fm1_wl82_keyscan *s,unsigned row){
+    unsigned v=s->led_rows[row];
     if(v){change(PH,H_LEDS,((v&1)?0x40u:0)|((v&2)?0x200u:0));
         change(PA,A_LEDS,((v&4)?0x200u:0)|((v&8)?0x400u:0));}
     s->led_driven=(uint8_t)v;
@@ -243,6 +243,11 @@ void fm1_wl82_keyscan_async_kick(fm1_wl82_keyscan *s){
        shift row0 with latch falling AFTER arm, as with continuous scanning. */
     s->paused=0;
     {unsigned i;for(i=0;i<11;i++)s->led_rows[i]=s->led_requested[i];}
+#ifdef FM1_KEYSCAN_PACED
+    /* Row10 is still latched. Give it one transfer's LED exposure now,
+       rather than leaving it driven throughout the inter-sweep idle. */
+    lights_row(s,10);
+#endif
     async_arm(0xf7fe);change(PA,LATCH,0);
 }
 void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *s){
@@ -251,10 +256,16 @@ void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *s){
     change(SPI,0,0x4000u);
     /* Blank before changing the latched row, then drive that row's LEDs.
        Same ordering and four output columns as the recovered scanner ISR. */
-    if(s->led_driven)lights_off();
+    if(s->led_driven){lights_off();s->led_driven=0;}
     s->work_rows[s->row]=fm1_stock_pack_columns(rd(PA+4),rd(PB+4));
     change(PA,0,LATCH);
-    lights_row(s);
+#ifdef FM1_KEYSCAN_PACED
+    /* The final row's equal pulse occurs on the next kick, while its latch
+       is unchanged. All LEDs stay blank during the paced idle. */
+    if(s->row!=10)lights_row(s,s->row);
+#else
+    lights_row(s,s->row);
+#endif
     if(++s->row==11){
         s->row=0;
         if(s->primed){

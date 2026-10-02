@@ -8,6 +8,12 @@ static const uint8_t *source;
 static uint8_t matrix[11],armed[2];
 static unsigned words,pending,prepared,addressed,early;
 static int selected=-1,shifted=-1;
+static unsigned exposure[11][4];
+static void advance_light_time(unsigned units){
+    unsigned col,v=((gpio[0x1c0/4]&0x40u)?1u:0)|((gpio[0x1c0/4]&0x200u)?2u:0)|
+                   ((gpio[0]&0x200u)?4u:0)|((gpio[0]&0x400u)?8u:0);
+    if(selected>=0)for(col=0;col<4;col++)if(v&(1u<<col))exposure[selected][col]+=units;
+}
 static uint32_t clock_us(void *ctx){CHECK(ctx==&ticks);clocks++;return ticks;}
 static uint32_t *reg(uint32_t a){
     if(a>=0x50000 && a<0x50200 && !(a&3))return &gpio[(a-0x50000)/4];
@@ -26,6 +32,7 @@ uint32_t fm1_keyscan_test_read(uint32_t a){
 }
 static void complete(void){
     CHECK(pending && source && !memcmp(source,armed,2));
+    advance_light_time(16); /* Same modeled two-byte transfer time for each row. */
     CHECK(!(gpio[0]&2));pending=0;cnt=0;con|=0x8000;
 }
 void fm1_keyscan_test_write(uint32_t a,uint32_t v){
@@ -48,7 +55,7 @@ void fm1_keyscan_test_write(uint32_t a,uint32_t v){
     }
     CHECK(a!=0x11e08);
     if(a==0x50000 && !(gpio[0]&2) && (v&2)){
-        CHECK(!pending);selected=shifted;
+        CHECK(!pending && !(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u));selected=shifted;
     }
     *reg(a)=v;
 }
@@ -113,6 +120,20 @@ int main(void){
     fm1_wl82_keyscan_lights(&s,0);pump(&s,11);
     CHECK(!(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u));
     CHECK(!fm1_wl82_keyscan_async_raw(&s,out));
+#ifdef FM1_KEYSCAN_PACED
+    /* Every mapped note/panel cell has one transfer's exposure, including
+       row10, and no extra exposure from a long inter-sweep idle. */
+    fm1_wl82_keyscan_lights(&s,UINT64_C(0x1ffffffffff));pump(&s,11);
+    CHECK(s.paused && !s.led_driven && !(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u));
+    memset(exposure,0,sizeof(exposure));advance_light_time(1000);
+    w=words;pump(&s,11);CHECK(words==w+11 && s.paused && !pending && !s.led_driven);
+    advance_light_time(1000);
+    for(i=0;i<11;i++)for(c=0;c<4;c++)CHECK(exposure[i][c]==((s.led_rows[i]&(1u<<c))?16u:0u));
+    CHECK(!fm1_wl82_keyscan_async_raw(&s,out) && !fm1_stock_decode_keys(out));
+    fm1_wl82_keyscan_lights(&s,0);pump(&s,11);
+    CHECK(!s.led_driven && !(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u));
+    CHECK(!fm1_wl82_keyscan_async_raw(&s,out));
+#endif
     /* A partial sweep cannot replace the last complete snapshot. */
     fm1_wl82_keyscan_lights(&s,UINT64_C(0x1ffffffffff));
     matrix[4]=0;pump(&s,5);memcpy(save,out,11);
