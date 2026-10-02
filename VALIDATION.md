@@ -776,3 +776,25 @@ that correction. The offline48-sector plan preserves boot/configuration areas.
 The verified installed image7dabf3790e75cfff4a995583528d6ca3873595e01ce3c01ed7ad38223b68ee1d
 remains preserved for rollback. No device write was performed; physical LED
 brightness, playback and restored meters await authorized installation.
+
+### Combined correction installed; Laydock playback
+
+The user authorized combined candidate5ba6344. All48 sectors and one full1MiB
+readback match imagec6692fad854b0d4018b8ae5da78deacb3fa25021e25dab5b9ca87c5457061a84.
+The previous7dabf379... image remains preserved as rollback, with boot/configuration
+areas unchanged. One reset was issued. The known helper UTF8 log-decode exception
+recurred; successful CDC observation resolved it without another reset. COM5
+reports MDX-KARAOKE/1, frames576640 to1019584 advancing and zero underruns. The
+helper is idle/unblocked with this image as its verified baseline and no pending
+reset or observation.
+
+LAY0_V.MDX and LAY_V.PDX transferred into volatile RAM with CRC/offset checks,
+then PLAY was acknowledged. Guide is enabled. Live selection verification moves
+FM1 mute0001 to FM2 mute0002, then back to FM1 mute0001; each settled status
+reports the matching selected part and guide error0. The device is left playing
+Laydock with FM1 selected. Frames advance to9806912 with zero underruns and no
+player/LCD/key/audio errors. Scanner enabled1,2255374 completions, failure reason0.
+Timing reports callback gap10ms, late0, minimum fill960, rebuffer0 and render
+maximum10ms. This is bounded live observation, not an endurance/capture test.
+The user was asked to check physical LED brightness and restored meter motion;
+those subjective hardware acceptance items remain pending.
