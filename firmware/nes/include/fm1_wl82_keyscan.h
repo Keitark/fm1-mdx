@@ -4,6 +4,13 @@
 #ifndef FM1_KEYSCAN_CLOCK_QUANTUM_US
 #define FM1_KEYSCAN_CLOCK_QUANTUM_US 0u
 #endif
+#define FM1_KEYSCAN_FAST_BAUD 29u
+#ifndef FM1_KEYSCAN_LED_BAUD
+#define FM1_KEYSCAN_LED_BAUD FM1_KEYSCAN_FAST_BAUD
+#endif
+#if FM1_KEYSCAN_LED_BAUD < FM1_KEYSCAN_FAST_BAUD || FM1_KEYSCAN_LED_BAUD > 255u
+#error LED scan divider must be within the supported slower byte-divider range
+#endif
 
 /* Physical SPI2 scanner for the stock-derived FM-1_010 pin assignment.
    start/poll/stop perform MMIO; construction/zero initialization does not.
@@ -38,7 +45,7 @@ typedef struct {
 typedef struct {
     void *context;
     uint32_t (*now_us)(void *);
-    uint8_t row, running,led_driven,led_rows[11],led_requested[11];
+    uint8_t row, running,led_driven,led_slow,led_rows[11],led_requested[11];
     fm1_wl82_keyscan_failure failure;
     fm1_wl82_keyscan_trace trace;
 #ifdef FM1_KEYSCAN_IRQ
@@ -71,6 +78,8 @@ void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *);
 /* PACED mode stops after each sweep, leaving the latch high, LEDs blank and no
    DMA active. The final row's LED pulse is deferred to the next kick while its
    selection remains latched, so it receives one transfer interval like others.
+   LED_BAUD optionally extends all pulses uniformly. Divider transitions happen
+   only at the paused, DMA-idle boundary; no lights restores FAST_BAUD.
    A periodic caller (under the same lock) kicks exactly one new sweep. It must
    run independently of NES frames, normally every 1ms. No waits/clock reads;
    duplicate kicks during a transfer and kicks after stop do nothing. The

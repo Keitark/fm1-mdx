@@ -99,11 +99,12 @@ int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx
             v.running,v.valid,v.raw,v.target,gain,(unsigned long)v.samples,(unsigned long)v.errors);reply(ctx,out);return 1;
     }
     if(!strcmp(s,"MDX SCAN")) {
-        char out[224];fm1_wl82_keyscan_failure d;unsigned enabled,completions;
-        f=take(&input_lock);d=scanner.failure;enabled=scan_enabled;completions=scanner.completions;release(&input_lock,f);
-        snprintf(out,sizeof(out),"MDX SCAN enabled=%u completions=%u reason=%lu row=%lu elapsed_us=%lu con=%08lx cnt=%lu\n",
+        char out[224];fm1_wl82_keyscan_failure d;unsigned enabled,completions,baud;
+        f=take(&input_lock);d=scanner.failure;enabled=scan_enabled;completions=scanner.completions;
+        baud=scanner.led_slow?FM1_KEYSCAN_LED_BAUD:FM1_KEYSCAN_FAST_BAUD;release(&input_lock,f);
+        snprintf(out,sizeof(out),"MDX SCAN enabled=%u completions=%u reason=%lu row=%lu elapsed_us=%lu con=%08lx cnt=%lu baud_written=%u\n",
             enabled,completions,(unsigned long)d.reason,(unsigned long)d.row,(unsigned long)(d.end_us-d.start_us),
-            (unsigned long)d.con,(unsigned long)d.dma_count);reply(ctx,out);return 1;
+            (unsigned long)d.con,(unsigned long)d.dma_count,baud);reply(ctx,out);return 1;
     }
     if(!strcmp(s,"MDX INPUT")) {
         char out[224];size_t n;

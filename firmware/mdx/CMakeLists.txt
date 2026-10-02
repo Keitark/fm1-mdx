@@ -76,7 +76,7 @@ add_executable(keyscan_clock_tests tests/keyscan_clock.c
   ../nes/src/fm1_wl82_keyscan.c ../nes/src/fm1_stock_keys.c)
 target_include_directories(keyscan_clock_tests PRIVATE ../nes/include)
 target_compile_definitions(keyscan_clock_tests PRIVATE FM1_WL82_KEYSCAN_TEST=1
-  FM1_KEYSCAN_IRQ=1 FM1_KEYSCAN_DMA2=1 FM1_KEYSCAN_PACED=1 FM1_KEYSCAN_CLOCK_QUANTUM_US=10000)
+  FM1_KEYSCAN_IRQ=1 FM1_KEYSCAN_DMA2=1 FM1_KEYSCAN_PACED=1 FM1_KEYSCAN_CLOCK_QUANTUM_US=10000 FM1_KEYSCAN_LED_BAUD=119)
 add_test(NAME mdx_keyscan_coarse_clock COMMAND keyscan_clock_tests)
 
 add_executable(usb_packet_tests ../usb-diag/test_packet.c ../usb-diag/packet.c)

@@ -798,3 +798,34 @@ Timing reports callback gap10ms, late0, minimum fill960, rebuffer0 and render
 maximum10ms. This is bounded live observation, not an endurance/capture test.
 The user was asked to check physical LED brightness and restored meter motion;
 those subjective hardware acceptance items remain pending.
+
+## Brighter guide LEDs, 2026-10-02 (candidate, not installed)
+
+The MDX profile now selects SPI2 divider119 when a sweep contains requested LEDs,
+extending each row's nominal pulse by (119+1)/(29+1)=4. It restores divider29
+when lights clear. Divider writes occur only at the paused boundary before LEDs
+or DMA are started; the setter remains free of MMIO, and pending requests cannot
+change an in-flight sweep. The equal-row exposure correction is retained, with
+no idle illumination, extra timer, transfer or busy wait. GPIO drive controls
+are unchanged. Shared scanner builds default to divider29 unless they opt in.
+The added state fits existing structure padding. SCAN adds baud_written to
+report software intent without reading the write-only baud register; failure
+snapshots also report the selected divider, and restart restores29.
+
+`python scripts/build.py host` passes17 CTests,8 client checks,4 screenshot checks
+and the descriptor-tree check. The scanner model verifies safe boundary changes,
+64-unit uniform exposure instead of16, zero idle exposure, exactly11 words per
+sweep, unchanged key snapshots and failure/restart behavior. The same new test
+fails on the previous scanner at the active-divider check. A separately compiled
+divider29 fallback passes the complete scanner model unchanged. These units model
+transfer duration; they do not measure optical brightness, actual IRQ jitter,
+physical scan period or USB audio continuity on hardware.
+
+The pinned USB-audio/30MHz/RGB444 SDK link/static audit and all11 linked corruption
+checks pass. Application195696 bytes, SHA256
+23e1600239c13fd11cb659b970f3c4948ea16eb64c0d582744b073a587e1eaa8.
+Full-image SHA256
+fb330d1a4e1817928920e4a6e941bc5cdd1eb24e5032b5722376e1ee04164df3.
+The offline48-sector plan preserves boot/configuration. Verified installed image
+c6692fad854b0d4018b8ae5da78deacb3fa25021e25dab5b9ca87c5457061a84
+is preserved privately as rollback. No device write was performed for brightness.

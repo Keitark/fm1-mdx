@@ -37,7 +37,8 @@ def main():
         defines=make_list(make,'DEFINES')+['-DFM1_USB_CONTROLLER=0','-DFM1_PERIPHERAL_TESTS=1',
             '-DFM1_LCD_STOCK_FILL=1','-DFM1_LCD_STOCK_DMA=1','-DFM1_LCD_STOCK_SEQUENCE=1',
             '-DFM1_MDX_PLAYER=1','-DFM1_TARGET_PI32V2=1','-DFM1_KEYSCAN_DMA2=1',
-            '-DFM1_KEYSCAN_IRQ=1','-DFM1_KEYSCAN_PACED=1','-DFM1_KEYSCAN_CLOCK_QUANTUM_US=10000']
+            '-DFM1_KEYSCAN_IRQ=1','-DFM1_KEYSCAN_PACED=1','-DFM1_KEYSCAN_CLOCK_QUANTUM_US=10000',
+            '-DFM1_KEYSCAN_LED_BAUD=119']
         includes=['-I'+str(MDX/n) for n in ('include','vendor/retrofm','vendor/mdxtools')]
         if a.lcd_rgb444:defines+=['-DFM1_MDX_LCD_RGB444=1']
         if a.lcd_spi!=12:defines+=['-DFM1_MDX_LCD_BAUD='+str({15:3,30:1}[a.lcd_spi])]

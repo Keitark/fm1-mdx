@@ -27,7 +27,7 @@ extern void fm1_keyscan_test_write(uint32_t,uint32_t);
 #define PH 0x501c0u
 #define MUX 0x51020u
 #define SPI 0x11e00u
-#define BAUD_WRITE_VALUE 29u
+#define BAUD_WRITE_VALUE FM1_KEYSCAN_FAST_BAUD
 #define LATCH 2u
 #define A_COLS 0x1e1u
 #define B_COLS 0x80u
@@ -123,7 +123,7 @@ static int transfer(fm1_wl82_keyscan *s,uint16_t value,int lower_latch,unsigned 
                               (polls>=1000000u?2u:0u);
             s->failure.row=s->row;s->failure.phase=phase;s->failure.value=value;
             s->failure.start_us=start;s->failure.end_us=now;s->failure.polls=polls;
-            s->failure.con=status;s->failure.baud_written=BAUD_WRITE_VALUE;
+            s->failure.con=status;s->failure.baud_written=s->led_slow?FM1_KEYSCAN_LED_BAUD:BAUD_WRITE_VALUE;
             s->failure.pre_con=pre;s->failure.cleared_con=cleared;s->failure.first_con=first;
 #ifdef FM1_KEYSCAN_DMA2
             s->failure.dma_count=rd(SPI+16);
@@ -189,7 +189,7 @@ static int configure(fm1_wl82_keyscan *s,void *ctx,uint32_t (*clock)(void *),uin
     s->context=ctx;s->now_us=clock;s->row=0;s->running=1;
     fm1_wl82_keyscan_lights(s,0);
     {unsigned i;for(i=0;i<11;i++)s->led_rows[i]=0;}
-    s->led_driven=0;
+    s->led_driven=s->led_slow=0;
 #ifdef FM1_KEYSCAN_IRQ
     s->async_mode=s->primed=s->paused=0;
     s->completions=s->observed_completions=s->sequence=s->consumed=0;
@@ -242,7 +242,12 @@ void fm1_wl82_keyscan_async_kick(fm1_wl82_keyscan *s){
     /* The previous ISR already latched row10. Preserve that pipeline state:
        shift row0 with latch falling AFTER arm, as with continuous scanning. */
     s->paused=0;
-    {unsigned i;for(i=0;i<11;i++)s->led_rows[i]=s->led_requested[i];}
+    {unsigned i,lit=0;for(i=0;i<11;i++){s->led_rows[i]=s->led_requested[i];lit|=s->led_rows[i];}
+     /* BAUD is write-only. No transfer/pending IRQ exists at this boundary;
+        preserve the previous divider until all rows of a sweep complete. */
+     if(FM1_KEYSCAN_LED_BAUD!=BAUD_WRITE_VALUE && s->led_slow!=!!lit){
+         wr(SPI+4,lit?FM1_KEYSCAN_LED_BAUD:BAUD_WRITE_VALUE);s->led_slow=(uint8_t)!!lit;
+     }}
 #ifdef FM1_KEYSCAN_PACED
     /* Row10 is still latched. Give it one transfer's LED exposure now,
        rather than leaving it driven throughout the inter-sweep idle. */
@@ -309,7 +314,7 @@ int fm1_wl82_keyscan_async_raw(fm1_wl82_keyscan *s,uint8_t rows[11]){
         s->failure.valid=1;s->failure.reason=4;s->failure.phase=2;
         s->failure.row=s->row;s->failure.value=(uint32_t)(fm1_key_dma[0]<<8)|fm1_key_dma[1];
         s->failure.start_us=s->observed_at;s->failure.end_us=now;
-        s->failure.con=status;s->failure.baud_written=BAUD_WRITE_VALUE;
+        s->failure.con=status;s->failure.baud_written=s->led_slow?FM1_KEYSCAN_LED_BAUD:BAUD_WRITE_VALUE;
         s->failure.dma_count=rd(SPI+16);s->failure.mux=rd(MUX);
         s->failure.pa_out=rd(PA);s->failure.pa_dir=rd(PA+8);
         fm1_wl82_keyscan_stop(s);return FM1_NES_IO_ERROR;
