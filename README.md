@@ -60,12 +60,14 @@ lights the final row during the next existing transfer. All rows receive one
 modeled transfer interval instead of the final row staying lit through idle.
 Input pacing and SPI transfer count are unchanged; physical brightness still
 requires a user check.
-The next brightness candidate extends these equal pulses using SPI2 divider119
+The installed brightness correction extends these equal pulses using SPI2 divider119
 while guide LEDs are requested (four times divider29's modeled transfer duration).
 The divider changes only between complete sweeps and returns to29 when LEDs clear.
 The existing1ms timer and11 transfers remain; GPIO drive settings are unchanged.
 `scan` reports `baud_written` as software intent because BAUD is write-only.
-This brightness candidate is not installed yet.
+Full flash readback is verified; live scanning retains approximately1kHz sweep
+pacing with brighter timing active and no reported faults. Physical brightness
+and key/audio acceptance are pending.
 USB equivalents: `guide --enable 1`, `guide --enable 0`, or `guide` for status,
 using `python firmware/mdx/usb_client.py ... --port <FM1 CDC port>`.
 

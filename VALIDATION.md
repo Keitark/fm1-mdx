@@ -829,3 +829,29 @@ fb330d1a4e1817928920e4a6e941bc5cdd1eb24e5032b5722376e1ee04164df3.
 The offline48-sector plan preserves boot/configuration. Verified installed image
 c6692fad854b0d4018b8ae5da78deacb3fa25021e25dab5b9ca87c5457061a84
 is preserved privately as rollback. No device write was performed for brightness.
+
+### Brighter correction installed; Laydock playback
+
+After exact-candidate authorization, source988ff6e was flashed. All48 written
+sectors and one full1MiB readback match
+fb330d1a4e1817928920e4a6e941bc5cdd1eb24e5032b5722376e1ee04164df3.
+The previous c6692fad... image remains preserved privately for rollback;
+boot/configuration areas were preserved. One reset was sent. The known helper
+UTF8 log-decoding exception recurred; successful CDC observation resolved it
+without sending another reset. The helper is idle/unblocked with the new hash
+as its verified baseline and no pending reset or observation.
+
+LAY0_V.MDX and LAY_V.PDX transferred into volatile RAM with CRC/offset checks;
+playback and guide were enabled, leaving FM1 selected and mute0001. Guide reports
+enabled1 and error0. Two scanner snapshots show completions3343912 to3967492,
+baud_written119 and failure reason0. Corresponding audio frames13403456 to15911872
+give approximately997 sweeps/second at11 completions per sweep. These snapshots
+are not atomic; this is an approximate live pacing check, not IRQ-jitter analysis.
+Both snapshots report zero underruns and player/LCD/key/audio errors. Timing
+reports callback gap10ms, late0, minimum fill960, rebuffer0 and render maximum10ms.
+
+The user was asked to confirm brighter/even LEDs and normal keys/audio. Physical
+acceptance remains pending. This bounded observation does not qualify optical
+gain, USB recording or endurance. Private helper evidence is under
+flash run d93a8d48d2d44052a3378826dda4a48e and boot observation
+8652314192004b2894cc90a3203bec2c.
