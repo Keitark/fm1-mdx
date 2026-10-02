@@ -21,6 +21,34 @@ static unsigned crc32(const uint8_t *b,size_t n) {
     unsigned c=~0u,i;while(n--){c^=*b++;for(i=0;i<8;i++)c=(c>>1)^(0xedb88320u&(0u-(c&1)));}return ~c;
 }
 static long long audio(unsigned blocks){unsigned i,j;long long sum=0;for(i=0;i<blocks;i++){CHECK(!fm1_mdx_render(&p,stereo,128));for(j=0;j<256;j++)sum+=abs(stereo[j]);}return sum;}
+static void selection_tests(void) {
+    uint8_t volume[16],onset[16];uint16_t held,mask;uint32_t suppressed;
+    CHECK(!fm1_mdx_load(&p,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size));
+    CHECK(!fm1_mdx_select(&p,1) && !p.mute_mask); /* Ordinary selection stays unmuted. */
+    CHECK(!fm1_mdx_select(&p,0));
+    CHECK(!fm1_mdx_mute(&p,2,1) && !fm1_mdx_mute(&p,8,1));
+    CHECK(!fm1_mdx_mute(&p,0,1) && !fm1_mdx_note(&p,60,1));
+    fm1_mdx_song_write(&p,0x28,0x4a);fm1_mdx_song_write(&p,0x30,0x20);
+    fm1_mdx_part_activity(&p,volume,onset,&held);CHECK(held&1);
+    CHECK(!fm1_mdx_select(&p,1));
+    CHECK(p.selected==1 && p.mute_mask==0x106 && p.live_note[0]==-1);
+    CHECK(p.registers[0x28]==0x4a && p.registers[0x30]==0x20 && !p.meter_keys[0]);
+    p.sequence.tracks[0].opm_volume=0;
+    fm1_mdx_song_write(&p,8,0x78); /* Previous part regains note-on and meter. */
+    suppressed=p.suppressed_keys;
+    fm1_mdx_song_write(&p,8,0x79);fm1_mdx_song_write(&p,0x41,0x32);
+    CHECK(p.suppressed_keys==suppressed+1 && p.registers[0x41]==0x32);
+    CHECK(fm1_mdx_part_activity(&p,volume,onset,&held)==1 && held==1 && volume[0]==245);
+    fm1_mdx_song_write(&p,8,0); /* Previous part also regains note-off. */
+    CHECK(!fm1_mdx_part_activity(&p,volume,onset,&held) && !held);
+    CHECK(!fm1_mdx_note(&p,65,1));mask=p.mute_mask;
+    CHECK(!fm1_mdx_select(&p,1) && p.live_note[1]==65 && p.mute_mask==mask);
+    CHECK(fm1_mdx_select(&p,8)==-1 && p.selected==1 && p.live_note[1]==65 && p.mute_mask==mask);
+    CHECK(!fm1_mdx_select(&p,0) && p.mute_mask==0x105 && p.live_note[1]==-1);
+    fm1_mdx_song_write(&p,8,0x79);CHECK(p.meter_keys[1]);
+    CHECK(!fm1_mdx_mute(&p,0,0));
+    CHECK(!fm1_mdx_select(&p,1) && p.mute_mask==0x104); /* Karaoke off stays off. */
+}
 static void activity_tests(void) {
     uint8_t volume[16],onset[16],bands[32];uint16_t held;
     CHECK(!fm1_mdx_load(&p,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size));
@@ -44,7 +72,10 @@ static void activity_tests(void) {
     fm1_mdx_stop(&p);CHECK(!p.meter_seen && !p.meter_triggers);
 }
 int main(void) {
-    unsigned i,n;uint8_t image[4096];char s[300];activity_tests();
+    unsigned i,n;uint8_t image[4096];char s[300];activity_tests();selection_tests();
+    line("MDX GUIDE 1",0);CHECK(requested==FM1_MDX_GUIDE && !strncmp(response,"OK",2));
+    line("MDX GUIDE 0",0);CHECK(requested==FM1_MDX_GUIDE && !strncmp(response,"OK",2));
+    line("MDX GUIDE 2",0);CHECK(!strncmp(response,"ERR",3));
     /* A linear source must remain linear at fractional sample positions.
        Also exercise negative full-scale differences without signed overflow. */
     CHECK(fm1_mdx_mix_sample(0,0,10000,0)==0);
@@ -79,7 +110,7 @@ int main(void) {
     CHECK(!fm1_mdx_note(&p,61,0));CHECK(p.live_note[0]==60);
     CHECK(!fm1_mdx_note(&p,60,0));CHECK(p.live_note[0]==-1);CHECK(p.registers[8]==0);
     CHECK(!fm1_mdx_note(&p,60,1));CHECK(!fm1_mdx_select(&p,1));CHECK(p.live_note[0]==-1);
-    CHECK(fm1_mdx_note(&p,60,1)==-1);CHECK(!fm1_mdx_mute(&p,1,1));CHECK(!fm1_mdx_note(&p,60,1));
+    CHECK(!(p.mute_mask&1) && (p.mute_mask&2));CHECK(!fm1_mdx_note(&p,60,1));
     CHECK(!fm1_mdx_mute(&p,1,0));CHECK(p.live_note[1]==-1);
     for(i=0;i<9;i++)CHECK(!fm1_mdx_mute(&p,i,1));
     audio(400);memset(&p.meters,0,sizeof(p.meters));CHECK(audio(100)==0);

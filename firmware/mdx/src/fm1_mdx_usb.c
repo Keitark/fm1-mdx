@@ -48,6 +48,7 @@ int fm1_mdx_usb_line(fm1_mdx_upload *u,const fm1_mdx_usb_io *io,const char *s,ui
     if(!strcmp(s,"MDX PLAY"))op=FM1_MDX_PLAY;
     if(!strcmp(s,"MDX DEMO"))op=FM1_MDX_DEMO;
     a=b=0;
+    if(n==11 && !memcmp(s,"MDX GUIDE ",10) && (s[10]=='0' || s[10]=='1')){op=FM1_MDX_GUIDE;a=(unsigned)(s[10]-'0');}
     if(n==12 && !memcmp(s,"MDX SELECT ",11) && s[11]>='0' && s[11]<='7'){op=FM1_MDX_SELECT;a=(unsigned)(s[11]-'0');}
     if(n==13 && !memcmp(s,"MDX MUTE ",9)) {
         /* Two hex digits identify tracks00..0F; the last digit is0 or1. */

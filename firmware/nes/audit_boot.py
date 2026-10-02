@@ -230,6 +230,12 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
             # Cadence/dirty-row link: trace0x1c4e478 = ota_status0x1c4e2d0
             # +424. Reviewed store0x2002768 d1 ec 0b 1a; same46-byte wrapper.
             if usb_audio:encodings.update({424:'d1 ec 0b 1a'})
+            # Guide control link: trace0x1c4f5d8 = ota_status0x1c4f410+456.
+            # Reviewed store0x2002768 d1 ec 0b 1c; same46-byte wrapper.
+            if usb_audio:encodings.update({456:'d1 ec 0b 1c'})
+            # CDC-only guide link: trace0x1c4d378 = ota_status0x1c4d1c0+440.
+            # Reviewed46-byte wrapper store d1 ec0b 1b.
+            if usb_mdx and not usb_audio:encodings.update({440:'d1 ec 0b 1b'})
             require(delta in encodings,'USB trace merged-global offset changed: '+str(delta))
             struct.pack_into('<I',expected_wrapper,4,value('ota_status'))
             expected_wrapper[14:16]=bytes.fromhex(encodings[delta])

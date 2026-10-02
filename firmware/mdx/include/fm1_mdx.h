@@ -30,6 +30,8 @@ typedef struct {
 int fm1_mdx_load(fm1_mdx_player *,const uint8_t *,size_t,const uint8_t *,size_t);
 void fm1_mdx_stop(fm1_mdx_player *);
 int fm1_mdx_mute(fm1_mdx_player *,unsigned track,int mute);
+/* Selected karaoke mute follows a different valid FM selection; unrelated
+   mute bits remain unchanged. Normal selection does not create a mute. */
 int fm1_mdx_select(fm1_mdx_player *,unsigned track);
 int fm1_mdx_note(fm1_mdx_player *,unsigned midi_note,int down);
 int fm1_mdx_render(fm1_mdx_player *,int16_t *stereo,size_t frames);

@@ -15,6 +15,8 @@
 #include "fm1_mdx.h"
 #include "fm1_mdx_usb.h"
 #include "fm1_screen.h"
+#include "fm1_controls.h"
+#include "fm1_guide.h"
 #include "fm1_wl82_keyscan.h"
 #include "fm1_volume.h"
 #include "peripheral_logic.h"
@@ -33,9 +35,12 @@ static fm1_mdx_upload upload;
 static fm1_wl82_keyscan scanner;
 static fm1_volume mdx_volume;
 static fm1_encoders encoders;
+static fm1_guide guide;
+static unsigned guide_enabled;
+static uint64_t guide_lights;
 static fm1_audio_startup envelope;
 static spinlock_t control_lock,audio_lock,input_lock;
-typedef struct {unsigned request,a,b,running,available,selected,mutes,frames,error,underruns,shutdown,quiescent,panel;int octave,last_panel;} fm1_mdx_control;
+typedef struct {unsigned request,a,b,running,available,selected,mutes,frames,error,underruns,shutdown,quiescent,panel,guide,guide_hits,guide_missed;int octave,last_panel,guide_note,guide_error;} fm1_mdx_control;
 static fm1_mdx_control control;
 static int keyboard_octave;
 static unsigned keyboard_slot=41,keyboard_note;
@@ -94,11 +99,12 @@ int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx
             v.running,v.valid,v.raw,v.target,gain,(unsigned long)v.samples,(unsigned long)v.errors);reply(ctx,out);return 1;
     }
     if(!strcmp(s,"MDX SCAN")) {
-        char out[224];fm1_wl82_keyscan_failure d;unsigned enabled,completions;
-        f=take(&input_lock);d=scanner.failure;enabled=scan_enabled;completions=scanner.completions;release(&input_lock,f);
-        snprintf(out,sizeof(out),"MDX SCAN enabled=%u completions=%u reason=%lu row=%lu elapsed_us=%lu con=%08lx cnt=%lu\n",
+        char out[224];fm1_wl82_keyscan_failure d;unsigned enabled,completions,baud;
+        f=take(&input_lock);d=scanner.failure;enabled=scan_enabled;completions=scanner.completions;
+        baud=scanner.led_slow?FM1_KEYSCAN_LED_BAUD:FM1_KEYSCAN_FAST_BAUD;release(&input_lock,f);
+        snprintf(out,sizeof(out),"MDX SCAN enabled=%u completions=%u reason=%lu row=%lu elapsed_us=%lu con=%08lx cnt=%lu baud_written=%u\n",
             enabled,completions,(unsigned long)d.reason,(unsigned long)d.row,(unsigned long)(d.end_us-d.start_us),
-            (unsigned long)d.con,(unsigned long)d.dma_count);reply(ctx,out);return 1;
+            (unsigned long)d.con,(unsigned long)d.dma_count,baud);reply(ctx,out);return 1;
     }
     if(!strcmp(s,"MDX INPUT")) {
         char out[224];size_t n;
@@ -108,6 +114,11 @@ int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx
         snprintf(out+n,sizeof(out)-n," enc=%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
                  (long)encoders.count[0],(long)encoders.count[1],(long)encoders.count[2],(long)encoders.count[3],(long)encoders.count[4],(long)encoders.count[5],(long)encoders.count[6]);
         release(&input_lock,f);reply(ctx,out);return 1;
+    }
+    if(!strcmp(s,"MDX GUIDE")) {
+        fm1_mdx_control v;char out[160];f=take(&control_lock);v=control;release(&control_lock,f);
+        snprintf(out,sizeof(out),"MDX GUIDE enabled=%u selected=%u note=%d hits=%u missed=%u error=%d\n",v.guide,v.selected,v.guide_note,v.guide_hits,v.guide_missed,v.guide_error);
+        reply(ctx,out);return 1;
     }
     if(!strcmp(s,"MDX DISPLAY")) {
         char out[224];uint32_t frame,fps,rows,skipped,maximum,ticks;unsigned f=take(&control_lock);
@@ -176,11 +187,14 @@ static void fm1_mdx_scan_tick(void *u) {
 }
 static void publish(void) {
     unsigned f,fr,ur;f=take(&audio_lock);fr=frames;ur=underruns;release(&audio_lock,f);
-    f=take(&control_lock);control.selected=player.selected;control.mutes=player.mute_mask;control.frames=fr;control.underruns=ur;control.error=(unsigned)player.error;release(&control_lock,f);
+    f=take(&control_lock);control.selected=player.selected;control.mutes=player.mute_mask;control.frames=fr;control.underruns=ur;control.error=(unsigned)player.error;
+    control.guide=guide_enabled;control.guide_note=fm1_guide_note(&guide);control.guide_hits=guide.hits;control.guide_missed=guide.missed;control.guide_error=guide.error;release(&control_lock,f);
 }
 static void silence(void) {
     unsigned f=take(&audio_lock);rd=wr=0;primed=0;audio_playing=0;release(&audio_lock,f);
     fm1_mdx_stop(&player);
+    fm1_guide_stop(&guide);guide_lights=0;
+    f=take(&input_lock);fm1_wl82_keyscan_lights(&scanner,0);release(&input_lock,f);
     keyboard_slot=41;
     f=take(&control_lock);control.running=0;release(&control_lock,f);
 }
@@ -196,6 +210,7 @@ static void panel_edges(uint64_t down,uint64_t up,uint64_t held) {
     if(!upload.active && !control.request) {
         if(down&(UINT64_C(1)<<12))request(0,running?FM1_MDX_STOP:(uploaded_song&&upload.ready?FM1_MDX_PLAY:FM1_MDX_DEMO),0,0);
         else if(down&4)request(0,FM1_MDX_MUTE,player.selected,!(player.mute_mask&(1u<<player.selected)));
+        else if(down&8)request(0,FM1_MDX_GUIDE,!guide_enabled,0); /* SEL */
     }
     release(&control_lock,f);
     if(!running)return;
@@ -206,7 +221,7 @@ static void panel_edges(uint64_t down,uint64_t up,uint64_t held) {
     }
     for(i=14;i<41;i++)if((down>>i)&1) {
         unsigned note=(unsigned)(53+(int)i-14+12*keyboard_octave);
-        if(!fm1_mdx_note(&player,note,1)){keyboard_slot=i;keyboard_note=note;}
+        if(!fm1_mdx_note(&player,note,1)){keyboard_slot=i;keyboard_note=note;fm1_guide_hit(&guide,note);}
     }
 }
 static void shutdown(void) {
@@ -229,6 +244,7 @@ static void action(unsigned op,unsigned a,unsigned b) {
     int rc=0;
     if(op==FM1_MDX_STOP){silence();return;}
     if(op==FM1_MDX_DEMO || op==FM1_MDX_PLAY) {
+        fm1_guide_stop(&guide);
         ui_title_dirty=1;
         unsigned f=take(&audio_lock);rd=wr=0;primed=0;audio_playing=1;release(&audio_lock,f);
         if(op==FM1_MDX_PLAY) {
@@ -240,10 +256,27 @@ static void action(unsigned op,unsigned a,unsigned b) {
                in the built-in demo; external MDX/PDX songs retain their mix. */
             if(!rc)rc=fm1_mdx_mute(&player,8,1);
         }
+        if(!rc && guide_enabled)rc=fm1_mdx_mute(&player,player.selected,1);
     } else if(op==FM1_MDX_SELECT)rc=fm1_mdx_select(&player,a);
     else if(op==FM1_MDX_MUTE)rc=fm1_mdx_mute(&player,a,(int)b);
-    else if(op==FM1_MDX_NOTE)rc=fm1_mdx_note(&player,a,(int)b);
+    else if(op==FM1_MDX_NOTE){rc=fm1_mdx_note(&player,a,(int)b);if(!rc && b)fm1_guide_hit(&guide,a);}
+    else if(op==FM1_MDX_GUIDE){guide_enabled=!!a;if(a)rc=fm1_mdx_mute(&player,player.selected,1);else fm1_guide_stop(&guide);}
     if(rc){unsigned f=take(&control_lock);control.error=(unsigned)rc;release(&control_lock,f);}
+}
+static void guide_update(unsigned queued,unsigned budget) {
+    uint64_t audible,latency,lights=0;unsigned slot,f;int direction;
+    if(guide_enabled && player.playing && (player.mute_mask&(1u<<player.selected)) && !key_error) {
+        if(!guide.active || guide.selected!=player.selected)fm1_guide_start(&guide,&player);
+        /* Sequencing runs ahead to fill audio. Expire against the DAC queue's
+           audible position, not the renderer's future position. */
+        latency=(uint64_t)queued*RETROFM_PL_CLOCK_HZ/FM1_MDX_RATE;
+        audible=player.cycles>latency?player.cycles-latency:0;
+        fm1_guide_step(&guide,audible,budget);
+        slot=fm1_guide_key(&guide,keyboard_octave,&direction);
+        if(slot<41)lights|=UINT64_C(1)<<slot;
+        if(direction)lights|=UINT64_C(1)<<(direction>0?1:0);
+    } else fm1_guide_stop(&guide);
+    if(lights!=guide_lights){guide_lights=lights;f=take(&input_lock);fm1_wl82_keyscan_lights(&scanner,lights);release(&input_lock,f);}
 }
 /* Bounded dirty-row batches. The same frozen state renders LCD and SHOT. */
 static fm1_screen_view ui,ui_live;
@@ -264,6 +297,8 @@ static void ui_update(uint32_t elapsed_ms) {
      }else ui_live.credit_scroll=0;}
     ui_live.running=(uint8_t)control.running;ui_live.selected=player.selected;ui_live.mutes=player.mute_mask;
     ui_live.tracks=player.mdx.track_count;ui_live.uploaded=(uint8_t)uploaded_song;ui_live.octave=(int8_t)keyboard_octave;
+    ui_live.guide=(uint8_t)guide_enabled;ui_live.guide_note=(int8_t)fm1_guide_note(&guide);
+    {int direction;fm1_guide_key(&guide,keyboard_octave,&direction);ui_live.guide_direction=(int8_t)direction;}
     ui_live.seconds=(uint32_t)(player.cycles/RETROFM_PL_CLOCK_HZ);
     /* Event spectrum with independently held/falling maximum lines. No FFT
        or per-sample part tap. The task advances all envelopes by elapsed time. */
@@ -306,7 +341,7 @@ static int ui_row(unsigned y) {
 __attribute__((noinline,used))
 static void fm1_peripheral_task(void *u) {
     struct iis_platform_data pd;unsigned f;uint32_t last_meter=0,last_status=0,changed=0,ui_started=0,view_phase=0,meter_phase=0;unsigned row=240,view_due=1;
-    uint64_t candidate=0,stable=0;int32_t encoder=0;
+    uint64_t candidate=0,stable=0;fm1_selector selector={0};int selector_pending=0;
     (void)u;memset(&pd,0,sizeof(pd));
     lcd_error=fm1_display_test_init();
     if(!lcd_error)lcd_error=fm1_display_mdx_stream_start();
@@ -331,7 +366,10 @@ static void fm1_peripheral_task(void *u) {
         if(op==FM1_MDX_PLAY || op==FM1_MDX_DEMO)control.running=1;
         running=control.running;closing=control.shutdown;release(&control_lock,f);
         if(closing)shutdown();
-        if(op){action(op,a,b);publish();if(op==FM1_MDX_STOP)running=0;}
+        if(op){
+            f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);guide_update(queued,0);
+            action(op,a,b);publish();if(op==FM1_MDX_STOP)running=0;
+        }
         f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
         if(running && player.loaded && !audio_error && queued<=2048-FM1_MDX_BLOCK) {
             uint32_t started=timer_get_ms(),elapsed;
@@ -343,6 +381,8 @@ static void fm1_peripheral_task(void *u) {
             }
             elapsed=timer_get_ms()-started;f=take(&audio_lock);if(elapsed>render_max_ms)render_max_ms=elapsed;release(&audio_lock,f);
         }
+        f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
+        guide_update(queued,0); /* Prune before a physical or USB key is matched. */
         f=take(&input_lock);scan_rc=scan_enabled?fm1_wl82_keyscan_async_raw(&scanner,rows):FM1_NES_BUSY;release(&input_lock,f);
         if(!scan_rc) {
             uint64_t keys=fm1_stock_decode_keys(rows),down,up;
@@ -352,10 +392,7 @@ static void fm1_peripheral_task(void *u) {
                 down=candidate&~stable;up=stable&~candidate;stable=candidate;
                 panel_edges(down,up,stable);
             }
-            if(encoders.count[0]!=encoder) {
-                int step=encoders.count[0]>encoder?1:-1;encoder=encoders.count[0];
-                f=take(&control_lock);if(!upload.active && !control.request)request(0,FM1_MDX_SELECT,(player.selected+8+step)%8,0);release(&control_lock,f);
-            }
+            selector_pending=(int)(((int64_t)selector_pending+fm1_selector_step(&selector,encoders.count[0]))%840); /* LCM of1..8 parts. */
         } else if(scan_rc!=FM1_NES_BUSY && scan_enabled) {
             key_error=scan_rc;f=take(&input_lock);scan_enabled=0;fm1_wl82_keyscan_stop(&scanner);release(&input_lock,f);
             /* Lost key releases must never leave a manual voice held. */
@@ -374,6 +411,20 @@ static void fm1_peripheral_task(void *u) {
             last_meter=now;ui_ticks+=fm1_meter_ticks(&meter_phase,elapsed);
             ui_update(elapsed);
         }
+        if(selector_pending) {
+            f=take(&control_lock);
+            if(!upload.active && !control.request && control.running) {
+                unsigned tracks=player.mdx.track_count<8?player.mdx.track_count:8;
+                int next=tracks?((int)player.selected+selector_pending)%((int)tracks):0;
+                if(next<0)next+=(int)tracks;
+                if(!request(0,FM1_MDX_SELECT,(unsigned)next,0))selector_pending=0;
+            } else if(!control.running || upload.active)selector_pending=0;
+            release(&control_lock,f);
+        }
+        /* Lookahead only after the audio reserve is filled. At most two MDX
+           ticks per owner iteration; disabled mode has no parser work. */
+        f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
+        if(queued>=1470 || !running)guide_update(queued,2);
         /* Rendering changes occupancy; use the live reserve for UI/sleep. */
         f=take(&audio_lock);queued=wr-rd;release(&audio_lock,f);
         if(!lcd_error && (queued>=1470 || !running)) {

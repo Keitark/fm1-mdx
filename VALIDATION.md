@@ -625,3 +625,233 @@ inspected:32 spectrum bands,16 inline FM/PCM parts, embedded BY VEYRLEN credit,
 correct240x240 layout. This observes logical renderer output, not panel RGB444
 colour fidelity. Private screenshot stays outside Git. Source review is tracked
 in draft PR#17; subjective physical meter/audio acceptance remains open.
+
+## Karaoke guide candidate, 2026-10-02
+
+The selector previously treated every stable quadrature contact edge as a whole
+track step, explaining the user's two-track-per-detent report. The MDX control
+adapter now groups two contact edges, retains half steps across polls, cancels
+reversals, and handles bursts without throwing away the count delta. The raw
+scanner counters keep their original edge semantics. Detent scaling is based on
+the user-observed two-step behavior and still requires a physical check.
+
+SEL toggles a timed guide. Enabling it mutes the selected FM part. It previews
+actual future key-ons with a silent copy of the complete MDX sequencer, retaining
+cross-track synchronization, tempo, repeats, rests, key-on delay and ties. No
+preview callback touches YM2151, PCM, live registers or playback state. Two
+candidates are kept ready, and lookahead is limited to two MDX ticks per owner
+iteration after the audio reserve reaches1470 frames. Disabled mode runs no
+lookahead. Matching note-down consumes one candidate; wrong pitches and key-up
+leave it unchanged. Unplayed candidates expire at their scheduled audible DAC
+position, accounting for queued audio. Accompaniment never waits for input.
+
+Note and OCT-/OCT+ LEDs use the existing scanner's four multiplex columns,
+without another timer, SPI transfer or synth owner. Requests publish atomically
+at sweep boundaries. Stop and scanner failure blank outputs. Default inactive
+LED rows add no GPIO operations to the interrupt. The physical keyboard keeps
+its existing MIDI17-103 reach; notes outside it appear on screen without a
+misleading key or octave light. Disabling guidance leaves karaoke mute set.
+
+Routing evidence: FM1_010 LED cell table at0204630a; setter0201e83e encodes
+row=cell>>2 and column=cell&3; scanner ISR01c045ce blanks PH6/PH9/PA9/PA10,
+latches, then drives those columns from the current row bitmap. Note handler
+020233f6 uses button slot+1. OCT-/OCT+ use LED indices0/1; indicator12 is not a
+keyboard LED, so PLAY/STOP, REC and note slots skip it. This is static routing
+provenance, not physical LED acceptance. Source contains the mapping and our
+implementation, not stock instructions or firmware assets.
+
+Validation: `python scripts/build.py host` passes17 CTests,7 client checks,
+4 screenshot checks and the descriptor-tree check. Guide traces match an
+independent execution of the playback sequencer for pitches/timestamps, loops,
+delayed key-on, synchronization, rests, tempo changes and ties. Preview-on and
+preview-off produce bit-identical audio in the regression. Actual scanner MMIO
+model checks lit rows, latch/DMA order, unchanged keys and failure blanking.
+
+The current30MHz/RGB444 USB-audio profile links with the pinned SDK and passes
+static startup/power/USB ownership audit. Application195568 bytes, SHA256
+94af294298a2873d1ef1c609ff2f99e3295c3f4fbac4982c0cb2b55cff2c5a25.
+Reviewed LTO relocation changes: trace=ota_status+456 with unchanged46-byte
+wrapper, and power globals at+248/+260/+284 with the pinned initializer body.
+Exact destination/opcode checks remain; no broad relocation relaxation.
+
+The integrated Ray Force guide replay completes180 virtual seconds at+500ppm,
+5400 complete LCD views (30.00FPS),1491 expired guide candidates, next MIDI67,
+zero guide/synth/USB/peripheral errors and no missing audio/rebuffer events.
+The frozen logical screen was visually inspected. This model does not measure
+PI32 CPU cost, panel LEDs/brightness or physical detents. At this candidate
+validation stage no firmware had been written; installation is recorded below.
+
+The standard CDC-only/RGB565 build also links and passes its static audit
+(application191920 bytes, SHA256
+fc2f15bfcf2111c8667d2be6fe6637173b3329e47c7feb3d585c6dc765bf6e4a).
+Its reviewed trace offset is+440 and power tuple+232/+244/+268. The original
+passes, and changed trace, LRC and low-power destinations are rejected in three
+offline corruption checks. The composite profile passes all11 linked checks.
+
+### Approved guide installation and Ray Force
+
+Implementation commit31b6fd5 was installed after explicit candidate approval.
+All48 application/directory sectors and one full1MiB readback match image
+7dabf3790e75cfff4a995583528d6ca3873595e01ce3c01ed7ad38223b68ee1d.
+The previous installed image4059dbd24bbe3d80794152a0140ab83cf1cc50fdcb15fff3052b9740b73b4f44
+is preserved privately for rollback. Boot and configuration areas were preserved.
+
+One reset was sent. The known UTF8 helper log-decoding error recurred; CDC
+observation confirmed boot and resolved it without another reset. COM5 reports
+MDX-KARAOKE/1, frames587712 to1029312 advancing and zero underruns.
+Ray Force MDX/PDX uploaded with CRC/offset acknowledgements, then playback was
+started. The built-in demo's PCM9 mute was cleared for the external song.
+Guide mode was enabled on FM1: live status reports enabled1, selected0, note74,
+hits0, missed742, error0, mute0001. The scanner reports enabled1,3049343
+completions and failure reason0. Audio frames advance to12852416 with zero
+synth/peripheral errors or underruns. USB capture was inactive during these
+checks, so this does not qualify recorded audio or USB capture stability.
+
+The PC client guide query initially expected an action acknowledgement; it now
+accepts the distinct MDX GUIDE status prefix while GUIDE0/1 still require the
+queued-action reply. Eight client tests pass, including this regression.
+The complete host validation also passes17 CTests,4 screenshot checks and the
+descriptor-tree check after the client correction.
+Physical LED operation and one-track-per-detent acceptance await the user's
+observation. Guidance starts disabled on boot, including the built-in sample;
+SEL enables it and mutes the selected FM part.
+
+## Karaoke follows selection, 2026-10-02 (not installed)
+
+Previously SELECT only changed the highlighted FM part, leaving the old karaoke
+mute set. Selecting a different valid FM part now releases the old manual note,
+restores its score pitch and playback note-on/off gate, and transfers its karaoke
+mute to the new selected part. The previous part's meter resumes with subsequent
+score note events. Patch sequencing continues on the muted part. Unrelated FM
+and PCM mute bits remain unchanged; ordinary unmuted selection creates no mute.
+Same-part selection and invalid selection leave held notes and mute state intact.
+The existing owner and guide reset logic are retained.
+
+`python scripts/build.py host` passes17 CTests,8 client checks,4 screenshot checks
+and the descriptor-tree check. New event regressions cover restored note-on/off,
+meter triggers/held activity, restored score pitch, suppressed new-part triggers,
+parameter writes, unrelated mutes, repeated/invalid selection, reverse selection,
+and selection with karaoke off. The actual target control/encoder model verifies
+mute transfer, guide selection reset and restored visible part-meter activity.
+
+`python scripts/build.py firmware --usb-audio --lcd-rgb444 --lcd-spi 30` passes the
+pinned SDK link/static audit; all11 linked USB/startup/power corruption checks
+pass. Application195600 bytes, SHA256
+4415df8c9622301cd790c84b2d788062f4704a3299e47c8cd065db1418d5bf3d.
+Full candidate image SHA256
+581bcbfb05b7a4f15584bc79ed78ee42f76489f771afe746da694b39cd09175d.
+The protected helper's offline plan passes48 application/directory sectors,
+with boot/configuration areas preserved. Installed guide image
+7dabf3790e75cfff4a995583528d6ca3873595e01ce3c01ed7ad38223b68ee1d
+is verified and preserved privately as rollback. No device write was performed
+for this correction; physical playback/meter acceptance remains pending.
+
+## Equal LED dwell, 2026-10-02 (combined candidate, not installed)
+
+The paced scanner drove row10 LEDs at the end of a burst, then left them on
+during the idle until the next1ms tick. Rows0-9 were only driven around one
+two-byte scan transfer. The actual scanner MMIO model reproduces this retained
+row10 output. The correction leaves all LEDs blank while paused, then drives
+the still-latched row10 at the next kick during the existing row0 transfer.
+Its completion blanks the LEDs before latching row0, as on every other row.
+No additional timer, transfer, DMA word, IRQ, busy wait or synth owner is added.
+The latch order, row count, key acquisition and1ms sweep pacing are retained.
+
+The exposure regression models an equal16-unit transfer for each row and long
+1000-unit idle gaps. Every requested mapped row/column receives exactly16 units;
+idle contributes zero. Each sweep still arms exactly11 words. Latch edges
+require all LED columns blank. This regression fails on the preserved previous
+scanner and passes on the correction. The full host run passes17 CTests,
+8 client checks,4 screenshot checks and the descriptor-tree check, including
+stop/failure blanking, key acquisition, guide and karaoke-selection regressions.
+This measures the model, not real IRQ jitter, GPIO current or visual brightness.
+
+The pinned USB-audio/30MHz/RGB444 SDK link/static audit and all11 linked corruption
+checks pass. Application195664 bytes, SHA256
+3dd7a83daac9a35935672706d8e6f13f904c1dcbeecaf72d981dfb0a34ea85bb.
+Combined full-image SHA256
+c6692fad854b0d4018b8ae5da78deacb3fa25021e25dab5b9ca87c5457061a84.
+This supersedes the uninstalled selection-only image581bcbfb... and includes
+that correction. The offline48-sector plan preserves boot/configuration areas.
+The verified installed image7dabf3790e75cfff4a995583528d6ca3873595e01ce3c01ed7ad38223b68ee1d
+remains preserved for rollback. No device write was performed; physical LED
+brightness, playback and restored meters await authorized installation.
+
+### Combined correction installed; Laydock playback
+
+The user authorized combined candidate5ba6344. All48 sectors and one full1MiB
+readback match imagec6692fad854b0d4018b8ae5da78deacb3fa25021e25dab5b9ca87c5457061a84.
+The previous7dabf379... image remains preserved as rollback, with boot/configuration
+areas unchanged. One reset was issued. The known helper UTF8 log-decode exception
+recurred; successful CDC observation resolved it without another reset. COM5
+reports MDX-KARAOKE/1, frames576640 to1019584 advancing and zero underruns. The
+helper is idle/unblocked with this image as its verified baseline and no pending
+reset or observation.
+
+LAY0_V.MDX and LAY_V.PDX transferred into volatile RAM with CRC/offset checks,
+then PLAY was acknowledged. Guide is enabled. Live selection verification moves
+FM1 mute0001 to FM2 mute0002, then back to FM1 mute0001; each settled status
+reports the matching selected part and guide error0. The device is left playing
+Laydock with FM1 selected. Frames advance to9806912 with zero underruns and no
+player/LCD/key/audio errors. Scanner enabled1,2255374 completions, failure reason0.
+Timing reports callback gap10ms, late0, minimum fill960, rebuffer0 and render
+maximum10ms. This is bounded live observation, not an endurance/capture test.
+The user was asked to check physical LED brightness and restored meter motion;
+those subjective hardware acceptance items remain pending.
+
+## Brighter guide LEDs, 2026-10-02 (candidate, not installed)
+
+The MDX profile now selects SPI2 divider119 when a sweep contains requested LEDs,
+extending each row's nominal pulse by (119+1)/(29+1)=4. It restores divider29
+when lights clear. Divider writes occur only at the paused boundary before LEDs
+or DMA are started; the setter remains free of MMIO, and pending requests cannot
+change an in-flight sweep. The equal-row exposure correction is retained, with
+no idle illumination, extra timer, transfer or busy wait. GPIO drive controls
+are unchanged. Shared scanner builds default to divider29 unless they opt in.
+The added state fits existing structure padding. SCAN adds baud_written to
+report software intent without reading the write-only baud register; failure
+snapshots also report the selected divider, and restart restores29.
+
+`python scripts/build.py host` passes17 CTests,8 client checks,4 screenshot checks
+and the descriptor-tree check. The scanner model verifies safe boundary changes,
+64-unit uniform exposure instead of16, zero idle exposure, exactly11 words per
+sweep, unchanged key snapshots and failure/restart behavior. The same new test
+fails on the previous scanner at the active-divider check. A separately compiled
+divider29 fallback passes the complete scanner model unchanged. These units model
+transfer duration; they do not measure optical brightness, actual IRQ jitter,
+physical scan period or USB audio continuity on hardware.
+
+The pinned USB-audio/30MHz/RGB444 SDK link/static audit and all11 linked corruption
+checks pass. Application195696 bytes, SHA256
+23e1600239c13fd11cb659b970f3c4948ea16eb64c0d582744b073a587e1eaa8.
+Full-image SHA256
+fb330d1a4e1817928920e4a6e941bc5cdd1eb24e5032b5722376e1ee04164df3.
+The offline48-sector plan preserves boot/configuration. Verified installed image
+c6692fad854b0d4018b8ae5da78deacb3fa25021e25dab5b9ca87c5457061a84
+is preserved privately as rollback. No device write was performed for brightness.
+
+### Brighter correction installed; Laydock playback
+
+After exact-candidate authorization, source988ff6e was flashed. All48 written
+sectors and one full1MiB readback match
+fb330d1a4e1817928920e4a6e941bc5cdd1eb24e5032b5722376e1ee04164df3.
+The previous c6692fad... image remains preserved privately for rollback;
+boot/configuration areas were preserved. One reset was sent. The known helper
+UTF8 log-decoding exception recurred; successful CDC observation resolved it
+without sending another reset. The helper is idle/unblocked with the new hash
+as its verified baseline and no pending reset or observation.
+
+LAY0_V.MDX and LAY_V.PDX transferred into volatile RAM with CRC/offset checks;
+playback and guide were enabled, leaving FM1 selected and mute0001. Guide reports
+enabled1 and error0. Two scanner snapshots show completions3343912 to3967492,
+baud_written119 and failure reason0. Corresponding audio frames13403456 to15911872
+give approximately997 sweeps/second at11 completions per sweep. These snapshots
+are not atomic; this is an approximate live pacing check, not IRQ-jitter analysis.
+Both snapshots report zero underruns and player/LCD/key/audio errors. Timing
+reports callback gap10ms, late0, minimum fill960, rebuffer0 and render maximum10ms.
+
+The user was asked to confirm brighter/even LEDs and normal keys/audio. Physical
+acceptance remains pending. This bounded observation does not qualify optical
+gain, USB recording or endurance. Private helper evidence is under
+flash run d93a8d48d2d44052a3378826dda4a48e and boot observation
+8652314192004b2894cc90a3203bec2c.

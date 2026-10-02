@@ -131,9 +131,18 @@ int fm1_mdx_mute(fm1_mdx_player *p,unsigned track,int mute) {
     return 0;
 }
 int fm1_mdx_select(fm1_mdx_player *p,unsigned track) {
+    unsigned previous;int karaoke;
     if(!p->loaded || track>=8 || track>=p->mdx.track_count)return -1;
-    if(p->selected!=track && p->live_note[p->selected]>=0) {
-        write_reg(p,8,p->selected);p->live_note[p->selected]=-1;
+    previous=p->selected;if(previous==track)return 0;
+    karaoke=!!(p->mute_mask&(1u<<previous));
+    if(karaoke) {
+        /* Only the selected karaoke part follows the selector. Release its
+           manual note and restore song pitch before returning it to playback;
+           other independently muted FM/PCM parts keep their state. */
+        fm1_mdx_mute(p,previous,0);
+        fm1_mdx_mute(p,track,1);
+    } else if(p->live_note[previous]>=0) {
+        write_reg(p,8,previous);p->live_note[previous]=-1;
     }
     p->selected=(uint8_t)track;return 0;
 }

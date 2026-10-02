@@ -8,6 +8,12 @@ static const uint8_t *source;
 static uint8_t matrix[11],armed[2];
 static unsigned words,pending,prepared,addressed,early;
 static int selected=-1,shifted=-1;
+static unsigned exposure[11][4];
+static void advance_light_time(unsigned units){
+    unsigned col,v=((gpio[0x1c0/4]&0x40u)?1u:0)|((gpio[0x1c0/4]&0x200u)?2u:0)|
+                   ((gpio[0]&0x200u)?4u:0)|((gpio[0]&0x400u)?8u:0);
+    if(selected>=0)for(col=0;col<4;col++)if(v&(1u<<col))exposure[selected][col]+=units;
+}
 static uint32_t clock_us(void *ctx){CHECK(ctx==&ticks);clocks++;return ticks;}
 static uint32_t *reg(uint32_t a){
     if(a>=0x50000 && a<0x50200 && !(a&3))return &gpio[(a-0x50000)/4];
@@ -26,6 +32,7 @@ uint32_t fm1_keyscan_test_read(uint32_t a){
 }
 static void complete(void){
     CHECK(pending && source && !memcmp(source,armed,2));
+    advance_light_time(16*(baud+1)/(FM1_KEYSCAN_FAST_BAUD+1));
     CHECK(!(gpio[0]&2));pending=0;cnt=0;con|=0x8000;
 }
 void fm1_keyscan_test_write(uint32_t a,uint32_t v){
@@ -35,11 +42,17 @@ void fm1_keyscan_test_write(uint32_t a,uint32_t v){
         if(!v){con=cnt=pending=prepared=addressed=words=0;}
         return;
     }
-    if(a==0x11e04){CHECK(con==0x2020 && v==29);baud=v;return;}
+    if(a==0x11e04){
+        CHECK(!pending && !prepared && !addressed && !(con&0x8000));
+        CHECK(!(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u));
+        if(!words)CHECK(con==0x2020 && v==29);
+        else CHECK(words%11==0 && con==0x2021 && (v==29 || v==FM1_KEYSCAN_LED_BAUD));
+        baud=v;return;
+    }
     if(a==0x11e0c){CHECK(prepared && !addressed && !pending && v==(uint32_t)(uintptr_t)source);addressed=1;return;}
     if(a==0x11e10){
         unsigned row=words%11;uint16_t expected=(uint16_t)(0xffffu^(1u<<row));
-        CHECK(v==2 && prepared && addressed && !pending && baud==29 && (con&0x2000));
+        CHECK(v==2 && prepared && addressed && !pending && (baud==29 || baud==FM1_KEYSCAN_LED_BAUD) && (con&0x2000));
         CHECK(words?((con&1) && (gpio[0]&2)):(!(con&1) && !(gpio[0]&2)));
         if(words && row<2)expected&=(uint16_t)~(0x800u<<row);
         CHECK(((source[0]<<8)|source[1])==expected);
@@ -48,7 +61,7 @@ void fm1_keyscan_test_write(uint32_t a,uint32_t v){
     }
     CHECK(a!=0x11e08);
     if(a==0x50000 && !(gpio[0]&2) && (v&2)){
-        CHECK(!pending);selected=shifted;
+        CHECK(!pending && !(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u));selected=shifted;
     }
     *reg(a)=v;
 }
@@ -70,7 +83,7 @@ int main(void){
     CHECK(fm1_wl82_keyscan_async_start(&s,&ticks,0)==FM1_NES_INVALID);
     CHECK(!reads && !writes);
     CHECK(!fm1_wl82_keyscan_async_start(&s,&ticks,clock_us));
-    CHECK(s.running && pending && words==1 && s.completions==0 && clocks==1);
+    CHECK(s.running && pending && words==1 && s.completions==0 && clocks==1 && !s.led_slow && baud==29);
     w=writes;r=reads;c=clocks;
     CHECK(fm1_wl82_keyscan_async_start(&s,&ticks,clock_us)==FM1_NES_BUSY);
     fm1_wl82_keyscan_async_step(&s); /* Spurious IRQ: no completion, no rearm. */
@@ -97,18 +110,53 @@ int main(void){
     pump(&s,1100);CHECK(!fm1_wl82_keyscan_async_raw(&s,out) && !memcmp(out,save,11));
     memset(matrix,0x3f,11);pump(&s,11);
     CHECK(!fm1_wl82_keyscan_async_raw(&s,out) && !fm1_stock_decode_keys(out));
+    /* One complete LED request, committed on next sweep. Key acquisition and
+       DMA/latch order remain the same with illuminated note/octave keys. */
+    w=writes;fm1_wl82_keyscan_lights(&s,(UINT64_C(1)<<14)|1|2);CHECK(writes==w && baud==29);
+    CHECK(s.led_requested[3]==2 && s.led_requested[0]==2 && s.led_requested[1]==2);
+    for(i=0;i<11;i++)CHECK(!s.led_rows[i]);
+    fm1_wl82_keyscan_async_kick(&s);complete();fm1_wl82_keyscan_async_step(&s);
+    CHECK(s.led_slow==(FM1_KEYSCAN_LED_BAUD!=29) && baud==FM1_KEYSCAN_LED_BAUD);
+    for(i=1;i<11;i++){
+        unsigned row=s.row,v=s.led_rows[row];
+        complete();fm1_wl82_keyscan_async_step(&s);
+        CHECK((gpio[0]&0x600u)==(((v&4)?0x200u:0)|((v&8)?0x400u:0)));
+        CHECK((gpio[0x1c0/4]&0x240u)==(((v&1)?0x40u:0)|((v&2)?0x200u:0)));
+    }
+    CHECK(!fm1_wl82_keyscan_async_raw(&s,out) && !fm1_stock_decode_keys(out));
+    fm1_wl82_keyscan_lights(&s,0);pump(&s,11);
+    CHECK(!(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u) && baud==29 && !s.led_slow);
+    CHECK(!fm1_wl82_keyscan_async_raw(&s,out));
+#ifdef FM1_KEYSCAN_PACED
+    /* Every mapped note/panel cell has one transfer's exposure, including
+       row10, and no extra exposure from a long inter-sweep idle. */
+    fm1_wl82_keyscan_lights(&s,UINT64_C(0x1ffffffffff));pump(&s,11);
+    CHECK(s.paused && !s.led_driven && !(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u));
+    memset(exposure,0,sizeof(exposure));advance_light_time(1000);
+    w=words;pump(&s,11);CHECK(words==w+11 && s.paused && !pending && !s.led_driven);
+    advance_light_time(1000);
+    for(i=0;i<11;i++)for(c=0;c<4;c++)CHECK(exposure[i][c]==((s.led_rows[i]&(1u<<c))?16u*(FM1_KEYSCAN_LED_BAUD+1)/30:0u));
+    CHECK(!fm1_wl82_keyscan_async_raw(&s,out) && !fm1_stock_decode_keys(out));
+    fm1_wl82_keyscan_lights(&s,0);pump(&s,11);
+    CHECK(!s.led_driven && !(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u));
+    CHECK(!fm1_wl82_keyscan_async_raw(&s,out));
+#endif
     /* A partial sweep cannot replace the last complete snapshot. */
+    fm1_wl82_keyscan_lights(&s,UINT64_C(0x1ffffffffff));
     matrix[4]=0;pump(&s,5);memcpy(save,out,11);
+    CHECK((gpio[0]&0x600u) || (gpio[0x1c0/4]&0x240u));
     CHECK(fm1_wl82_keyscan_async_raw(&s,out)==FM1_NES_BUSY && !memcmp(out,save,11));
     ticks=10000+FM1_KEYSCAN_CLOCK_QUANTUM_US-1;CHECK(fm1_wl82_keyscan_async_raw(&s,out)==FM1_NES_BUSY);
     ticks=10000+FM1_KEYSCAN_CLOCK_QUANTUM_US;CHECK(fm1_wl82_keyscan_async_raw(&s,out)==FM1_NES_IO_ERROR);
     CHECK(!s.running && !con && !pending && !memcmp(out,save,11));
+    CHECK(!(gpio[0]&0x600u) && !(gpio[0x1c0/4]&0x240u));
     CHECK(s.failure.valid && s.failure.reason==4 && s.failure.phase==2 && s.failure.dma_count==2);
+    CHECK(s.failure.baud_written==FM1_KEYSCAN_LED_BAUD);
     w=writes;r=reads;fm1_wl82_keyscan_async_step(&s);fm1_wl82_keyscan_stop(&s);
     CHECK(writes==w && reads==r);
     /* Restart discards a fresh priming sweep and does not retain stale rows. */
     memset(matrix,0x3f,11);ticks=UINT32_MAX-5000;
-    CHECK(!fm1_wl82_keyscan_async_start(&s,&ticks,clock_us) && !s.failure.valid);
+    CHECK(!fm1_wl82_keyscan_async_start(&s,&ticks,clock_us) && !s.failure.valid && baud==29 && !s.led_slow);
     pump(&s,11);CHECK(fm1_wl82_keyscan_async_raw(&s,out)==FM1_NES_BUSY);
     pump(&s,11);CHECK(!fm1_wl82_keyscan_async_raw(&s,out) && !fm1_stock_decode_keys(out));
     /* Completed DMA but no ISR delivery is also a task-detected stall. */

@@ -27,7 +27,7 @@ extern void fm1_keyscan_test_write(uint32_t,uint32_t);
 #define PH 0x501c0u
 #define MUX 0x51020u
 #define SPI 0x11e00u
-#define BAUD_WRITE_VALUE 29u
+#define BAUD_WRITE_VALUE FM1_KEYSCAN_FAST_BAUD
 #define LATCH 2u
 #define A_COLS 0x1e1u
 #define B_COLS 0x80u
@@ -45,6 +45,26 @@ __attribute__((aligned(64),used)) static uint8_t fm1_key_dma[64];
 #endif
 #endif
 static void change(uint32_t a,uint32_t clear,uint32_t set){wr(a,(rd(a)&~clear)|set);}
+static void lights_off(void){change(PA,A_LEDS,0);change(PH,H_LEDS,0);}
+void fm1_wl82_keyscan_lights(fm1_wl82_keyscan *s,uint64_t slots) {
+    /* FM1_010 LED cells at0204630a; note slot+1 in handler020233f6.
+       Panel OCT-/OCT+ are LED indices0/1 (02023d60/02023d7c); index12
+       is an extra indicator, so PLAY/STOP, REC and notes use slot+1.
+       Cell=row*4+column; columns PH6,PH9,PA9,PA10 respectively. */
+    static const uint8_t cells[41]={
+        0x01,0x05,0x1a,0x12,0x0a,0x02,0x27,0x23,0x1e,0x16,0x0e,0x06,0x2b,
+        0x1f,0x0d,0x09,0x15,0x11,0x1d,0x19,0x21,0x25,0x29,0x00,0x04,0x08,
+        0x0c,0x10,0x14,0x18,0x1c,0x20,0x24,0x28,0x03,0x07,0x0b,0x0f,0x13,0x1b,0x17};
+    unsigned i;if(!s)return;
+    for(i=0;i<11;i++)s->led_requested[i]=0;
+    if(s->running)for(i=0;i<41;i++)if((slots>>i)&1)s->led_requested[cells[i]>>2]|=(uint8_t)(1u<<(cells[i]&3));
+}
+static void lights_row(fm1_wl82_keyscan *s,unsigned row){
+    unsigned v=s->led_rows[row];
+    if(v){change(PH,H_LEDS,((v&1)?0x40u:0)|((v&2)?0x200u:0));
+        change(PA,A_LEDS,((v&4)?0x200u:0)|((v&8)?0x400u:0));}
+    s->led_driven=(uint8_t)v;
+}
 static void outputs(uint32_t port,uint32_t mask){
     change(port,mask,0);change(port+0x10,mask,0);change(port+0x14,mask,0);
     change(port+0x0c,0,mask);change(port+8,mask,0);
@@ -55,7 +75,8 @@ static void inputs(uint32_t port,uint32_t mask){
 }
 void fm1_wl82_keyscan_stop(fm1_wl82_keyscan *s){
     if(!s || !s->running)return;
-    wr(SPI,0);change(PA,LATCH,0);s->running=0;s->row=0;
+    wr(SPI,0);lights_off();s->led_driven=0;change(PA,LATCH,0);s->running=0;s->row=0;
+    fm1_wl82_keyscan_lights(s,0);
 #if defined(FM1_KEYSCAN_DMA2) && !defined(FM1_WL82_KEYSCAN_TEST)
     __asm__ volatile("csync" ::: "memory");
 #endif
@@ -102,7 +123,7 @@ static int transfer(fm1_wl82_keyscan *s,uint16_t value,int lower_latch,unsigned 
                               (polls>=1000000u?2u:0u);
             s->failure.row=s->row;s->failure.phase=phase;s->failure.value=value;
             s->failure.start_us=start;s->failure.end_us=now;s->failure.polls=polls;
-            s->failure.con=status;s->failure.baud_written=BAUD_WRITE_VALUE;
+            s->failure.con=status;s->failure.baud_written=s->led_slow?FM1_KEYSCAN_LED_BAUD:BAUD_WRITE_VALUE;
             s->failure.pre_con=pre;s->failure.cleared_con=cleared;s->failure.first_con=first;
 #ifdef FM1_KEYSCAN_DMA2
             s->failure.dma_count=rd(SPI+16);
@@ -166,6 +187,9 @@ static int configure(fm1_wl82_keyscan *s,void *ctx,uint32_t (*clock)(void *),uin
     s->failure=(fm1_wl82_keyscan_failure){0};
     s->trace=(fm1_wl82_keyscan_trace){0};
     s->context=ctx;s->now_us=clock;s->row=0;s->running=1;
+    fm1_wl82_keyscan_lights(s,0);
+    {unsigned i;for(i=0;i<11;i++)s->led_rows[i]=0;}
+    s->led_driven=s->led_slow=0;
 #ifdef FM1_KEYSCAN_IRQ
     s->async_mode=s->primed=s->paused=0;
     s->completions=s->observed_completions=s->sequence=s->consumed=0;
@@ -218,14 +242,35 @@ void fm1_wl82_keyscan_async_kick(fm1_wl82_keyscan *s){
     /* The previous ISR already latched row10. Preserve that pipeline state:
        shift row0 with latch falling AFTER arm, as with continuous scanning. */
     s->paused=0;
+    {unsigned i,lit=0;for(i=0;i<11;i++){s->led_rows[i]=s->led_requested[i];lit|=s->led_rows[i];}
+     /* BAUD is write-only. No transfer/pending IRQ exists at this boundary;
+        preserve the previous divider until all rows of a sweep complete. */
+     if(FM1_KEYSCAN_LED_BAUD!=BAUD_WRITE_VALUE && s->led_slow!=!!lit){
+         wr(SPI+4,lit?FM1_KEYSCAN_LED_BAUD:BAUD_WRITE_VALUE);s->led_slow=(uint8_t)!!lit;
+     }}
+#ifdef FM1_KEYSCAN_PACED
+    /* Row10 is still latched. Give it one transfer's LED exposure now,
+       rather than leaving it driven throughout the inter-sweep idle. */
+    lights_row(s,10);
+#endif
     async_arm(0xf7fe);change(PA,LATCH,0);
 }
 void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *s){
     uint16_t word;unsigned i;
     if(!s || !s->running || !s->async_mode || !(rd(SPI)&0x8000u))return;
     change(SPI,0,0x4000u);
+    /* Blank before changing the latched row, then drive that row's LEDs.
+       Same ordering and four output columns as the recovered scanner ISR. */
+    if(s->led_driven){lights_off();s->led_driven=0;}
     s->work_rows[s->row]=fm1_stock_pack_columns(rd(PA+4),rd(PB+4));
     change(PA,0,LATCH);
+#ifdef FM1_KEYSCAN_PACED
+    /* The final row's equal pulse occurs on the next kick, while its latch
+       is unchanged. All LEDs stay blank during the paced idle. */
+    if(s->row!=10)lights_row(s,s->row);
+#else
+    lights_row(s,s->row);
+#endif
     if(++s->row==11){
         s->row=0;
         if(s->primed){
@@ -269,7 +314,7 @@ int fm1_wl82_keyscan_async_raw(fm1_wl82_keyscan *s,uint8_t rows[11]){
         s->failure.valid=1;s->failure.reason=4;s->failure.phase=2;
         s->failure.row=s->row;s->failure.value=(uint32_t)(fm1_key_dma[0]<<8)|fm1_key_dma[1];
         s->failure.start_us=s->observed_at;s->failure.end_us=now;
-        s->failure.con=status;s->failure.baud_written=BAUD_WRITE_VALUE;
+        s->failure.con=status;s->failure.baud_written=s->led_slow?FM1_KEYSCAN_LED_BAUD:BAUD_WRITE_VALUE;
         s->failure.dma_count=rd(SPI+16);s->failure.mux=rd(MUX);
         s->failure.pa_out=rd(PA);s->failure.pa_dir=rd(PA+8);
         fm1_wl82_keyscan_stop(s);return FM1_NES_IO_ERROR;

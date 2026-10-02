@@ -4,6 +4,13 @@
 #ifndef FM1_KEYSCAN_CLOCK_QUANTUM_US
 #define FM1_KEYSCAN_CLOCK_QUANTUM_US 0u
 #endif
+#define FM1_KEYSCAN_FAST_BAUD 29u
+#ifndef FM1_KEYSCAN_LED_BAUD
+#define FM1_KEYSCAN_LED_BAUD FM1_KEYSCAN_FAST_BAUD
+#endif
+#if FM1_KEYSCAN_LED_BAUD < FM1_KEYSCAN_FAST_BAUD || FM1_KEYSCAN_LED_BAUD > 255u
+#error LED scan divider must be within the supported slower byte-divider range
+#endif
 
 /* Physical SPI2 scanner for the stock-derived FM-1_010 pin assignment.
    start/poll/stop perform MMIO; construction/zero initialization does not.
@@ -14,7 +21,7 @@
    synchronization requirements. No stock-code calls are used. FM1_KEYSCAN_DMA2 selects
    two-byte DMA with polled completion and one shared persistent RAM source;
    there must be only ONE active scanner instance. Default is BUF byte polling.
-   LED-multiplex outputs are kept low; encoder rotations are not decoded.
+   LED-multiplex outputs default low; encoder rotations are not decoded.
    Not enabled automatically by the headless boot image. Hardware unqualified. */
 /* Failure-only snapshot, taken before stop resets SPI2/row/latch. reason is
    a bitmask: 1=elapsed-time limit, 2=poll limit, 4=task-observed IRQ no-progress.
@@ -38,7 +45,7 @@ typedef struct {
 typedef struct {
     void *context;
     uint32_t (*now_us)(void *);
-    uint8_t row, running;
+    uint8_t row, running,led_driven,led_slow,led_rows[11],led_requested[11];
     fm1_wl82_keyscan_failure failure;
     fm1_wl82_keyscan_trace trace;
 #ifdef FM1_KEYSCAN_IRQ
@@ -55,6 +62,9 @@ int fm1_wl82_keyscan_poll(fm1_wl82_keyscan *,uint64_t *pressed);
 /* Same physical sweep, preserving the encoder contacts for diagnostics. */
 int fm1_wl82_keyscan_raw(fm1_wl82_keyscan *,uint8_t rows[FM1_STOCK_SCAN_ROWS]);
 void fm1_wl82_keyscan_stop(fm1_wl82_keyscan *);
+/* Slots match decoded keys0..40. Caller holds the same input lock as step.
+   Publishes at a sweep boundary; no SPI transfer or GPIO write in this setter. */
+void fm1_wl82_keyscan_lights(fm1_wl82_keyscan *,uint64_t slots);
 #ifdef FM1_KEYSCAN_IRQ
 /* The caller must serialize ALL accesses with a cross-core spinlock and local
    IRQ masking. Install IRQ_SPI2 before start; mask/unregister before teardown.
@@ -65,7 +75,11 @@ void fm1_wl82_keyscan_stop(fm1_wl82_keyscan *);
    transfer duration. Call regularly; stop/reset/recovery are task-only. */
 int fm1_wl82_keyscan_async_start(fm1_wl82_keyscan *,void *,uint32_t (*)(void *));
 void fm1_wl82_keyscan_async_step(fm1_wl82_keyscan *);
-/* PACED mode stops after each sweep, leaving the latch high and no DMA active.
+/* PACED mode stops after each sweep, leaving the latch high, LEDs blank and no
+   DMA active. The final row's LED pulse is deferred to the next kick while its
+   selection remains latched, so it receives one transfer interval like others.
+   LED_BAUD optionally extends all pulses uniformly. Divider transitions happen
+   only at the paused, DMA-idle boundary; no lights restores FAST_BAUD.
    A periodic caller (under the same lock) kicks exactly one new sweep. It must
    run independently of NES frames, normally every 1ms. No waits/clock reads;
    duplicate kicks during a transfer and kicks after stop do nothing. The

@@ -34,7 +34,43 @@ unit-specific flash images.
 OCT−/OCT+ shift new keyboard notes by an octave, bounded to−3..+2. A held note
 keeps its original pitch until released. FX toggles karaoke mute; PLAY/STOP
 toggles playback. The SELECT knob beside master volume selects an FM track
-(encoder0, pending physical confirmation). The SEL button is unassigned.
+(encoder0). The selector correction combines two decoded contact edges into
+one track step, retaining partial/reversed movement and fast turns. Physical
+detent behavior of this new correction is awaiting a bench check.
+
+When the selected FM part is in karaoke mute, turning SELECT restores that
+part's song note-on/off and meter activity from its next score note, and moves
+karaoke mute to the newly selected part. Its patch parameters continue updating.
+Other independently muted parts keep their settings. Selecting the same part
+leaves a held manual note untouched. With karaoke off, selection stays unmuted.
+The selection-follow correction is installed; physical meter acceptance is pending.
+
+SEL toggles **timed guide mode** (installed; physical LED acceptance pending). Enabling
+it mutes the selected FM part's song triggers and lights its next keyboard note.
+OCT-/OCT+ also lights when an octave shift is required. The footer shows the
+next note and octave direction. A matching key-down immediately shows the next
+candidate; a wrong note or key-up does not advance it. If you miss the note, the
+guide moves on at its scheduled DAC time. Accompaniment keeps playing normally.
+Guide-off leaves karaoke mute as set; use FX to unmute. Guidance follows the
+karaoke part when SELECT moves its mute. Stop clears the lights; restarting
+with guide enabled mutes the initially selected FM part again. Guidance covers
+FM1-8, not PCM sample keys; the physical keyboard range is MIDI17-103.
+The installed combined correction blanks LEDs during the paced scan idle and
+lights the final row during the next existing transfer. All rows receive one
+modeled transfer interval instead of the final row staying lit through idle.
+Input pacing and SPI transfer count are unchanged; physical brightness still
+requires a user check.
+The installed brightness correction extends these equal pulses using SPI2 divider119
+while guide LEDs are requested (four times divider29's modeled transfer duration).
+The divider changes only between complete sweeps and returns to29 when LEDs clear.
+The existing1ms timer and11 transfers remain; GPIO drive settings are unchanged.
+`scan` reports `baud_written` as software intent because BAUD is write-only.
+Full flash readback is verified; live scanning retains approximately1kHz sweep
+pacing with brighter timing active and no reported faults. Physical brightness
+and key/audio acceptance are pending.
+USB equivalents: `guide --enable 1`, `guide --enable 0`, or `guide` for status,
+using `python firmware/mdx/usb_client.py ... --port <FM1 CDC port>`.
+
 Slots14–40 are the keyboard, MIDI53–79 before octave shifting. The panel order
 is slots0/1 for OCT−/OCT+,2..7 for FX/SEL/ENV/LFO/EDIT/GLO, and8..13 for
 HOME/SAVE/ARP/SEQ/PLAY-STOP/REC. FX/SEL are user-observed; the remaining names

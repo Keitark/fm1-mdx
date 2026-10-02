@@ -83,6 +83,7 @@ def control_reply(port,command):
     action=command.split()[1]
     prefix={'STATUS':'MDX running=','AUDIO':'MDX AUDIO ','USB':'MDX USB ',
             'TIMING':'MDX TIMING ','DISPLAY':'MDX DISPLAY ','VOLUME':'MDX VOLUME ','SCAN':'MDX SCAN ','INPUT':'MDX INPUT '}.get(action,'OK MDX QUEUED')
+    if command=='MDX GUIDE':prefix='MDX GUIDE '
     return exchange(port,command,expected_prefix=prefix)
 
 def send(port,data):
@@ -104,11 +105,12 @@ def send(port,data):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action',choices=('list','upload','screenshot','status','input','audio','usb','timing','display','volume','scan','play','stop','demo','select','mute','note'))
+    p.add_argument('action',choices=('list','upload','screenshot','status','input','audio','usb','timing','display','volume','scan','guide','play','stop','demo','select','mute','note'))
     p.add_argument('--port');p.add_argument('--mdx',type=Path);p.add_argument('--pdx',type=Path)
     p.add_argument('--output',type=Path,help='PNG path for screenshot (default: timestamped current-directory file)')
     p.add_argument('--track',type=int,help='1..8 for select;1..16 for mute')
     p.add_argument('--note',type=int,help='MIDI13..108');p.add_argument('--on',type=int,choices=(0,1),default=1)
+    p.add_argument('--enable',type=int,choices=(0,1),help='Enable/disable guide; omit to read guide status')
     a=p.parse_args();data=None
     if a.action=='upload':
         if not a.mdx:p.error('--mdx is required')
@@ -141,6 +143,7 @@ def main():
         if a.action=='select':command+=f' {a.track-1}'
         elif a.action=='mute':command+=f' {a.track-1:02x} {a.on}'
         elif a.action=='note':command+=f' {a.note:02x} {a.on}'
+        elif a.action=='guide' and a.enable is not None:command+=f' {a.enable}'
         print(control_reply(port,command))
         if a.action=='stop':wait_stopped(port)
         print(control_reply(port,'MDX STATUS'))
