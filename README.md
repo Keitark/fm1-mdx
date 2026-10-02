@@ -38,14 +38,21 @@ toggles playback. The SELECT knob beside master volume selects an FM track
 one track step, retaining partial/reversed movement and fast turns. Physical
 detent behavior of this new correction is awaiting a bench check.
 
-SEL toggles the new **timed guide mode** (candidate, not yet installed). Enabling
+When the selected FM part is in karaoke mute, turning SELECT restores that
+part's song note-on/off and meter activity from its next score note, and moves
+karaoke mute to the newly selected part. Its patch parameters continue updating.
+Other independently muted parts keep their settings. Selecting the same part
+leaves a held manual note untouched. With karaoke off, selection stays unmuted.
+This selection-follow correction is a candidate awaiting installation.
+
+SEL toggles **timed guide mode** (installed; physical LED acceptance pending). Enabling
 it mutes the selected FM part's song triggers and lights its next keyboard note.
 OCT-/OCT+ also lights when an octave shift is required. The footer shows the
 next note and octave direction. A matching key-down immediately shows the next
 candidate; a wrong note or key-up does not advance it. If you miss the note, the
 guide moves on at its scheduled DAC time. Accompaniment keeps playing normally.
-Guide-off leaves karaoke mute as set; use FX to unmute. After selecting another
-part, use FX to mute that part for guidance. Stop clears the lights; restarting
+Guide-off leaves karaoke mute as set; use FX to unmute. Guidance follows the
+karaoke part when SELECT moves its mute. Stop clears the lights; restarting
 with guide enabled mutes the initially selected FM part again. Guidance covers
 FM1-8, not PCM sample keys; the physical keyboard range is MIDI17-103.
 USB equivalents: `guide --enable 1`, `guide --enable 0`, or `guide` for status,

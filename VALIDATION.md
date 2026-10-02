@@ -715,3 +715,33 @@ descriptor-tree check after the client correction.
 Physical LED operation and one-track-per-detent acceptance await the user's
 observation. Guidance starts disabled on boot, including the built-in sample;
 SEL enables it and mutes the selected FM part.
+
+## Karaoke follows selection, 2026-10-02 (not installed)
+
+Previously SELECT only changed the highlighted FM part, leaving the old karaoke
+mute set. Selecting a different valid FM part now releases the old manual note,
+restores its score pitch and playback note-on/off gate, and transfers its karaoke
+mute to the new selected part. The previous part's meter resumes with subsequent
+score note events. Patch sequencing continues on the muted part. Unrelated FM
+and PCM mute bits remain unchanged; ordinary unmuted selection creates no mute.
+Same-part selection and invalid selection leave held notes and mute state intact.
+The existing owner and guide reset logic are retained.
+
+`python scripts/build.py host` passes17 CTests,8 client checks,4 screenshot checks
+and the descriptor-tree check. New event regressions cover restored note-on/off,
+meter triggers/held activity, restored score pitch, suppressed new-part triggers,
+parameter writes, unrelated mutes, repeated/invalid selection, reverse selection,
+and selection with karaoke off. The actual target control/encoder model verifies
+mute transfer, guide selection reset and restored visible part-meter activity.
+
+`python scripts/build.py firmware --usb-audio --lcd-rgb444 --lcd-spi 30` passes the
+pinned SDK link/static audit; all11 linked USB/startup/power corruption checks
+pass. Application195600 bytes, SHA256
+4415df8c9622301cd790c84b2d788062f4704a3299e47c8cd065db1418d5bf3d.
+Full candidate image SHA256
+581bcbfb05b7a4f15584bc79ed78ee42f76489f771afe746da694b39cd09175d.
+The protected helper's offline plan passes48 application/directory sectors,
+with boot/configuration areas preserved. Installed guide image
+7dabf3790e75cfff4a995583528d6ca3873595e01ce3c01ed7ad38223b68ee1d
+is verified and preserved privately as rollback. No device write was performed
+for this correction; physical playback/meter acceptance remains pending.
