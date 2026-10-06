@@ -5,9 +5,10 @@ copyright ownership, permission or infringement. No runtime code was changed.
 
 ## Scope and sources
 
-The existing `panel_init[21][18]` arrays in
-`firmware/nes/boot/display_test.c` and `firmware/nes/src/fm1_board.c` are identical.
-Their comments identify FM-1_010 analysis as their origin. Later corroboration
+The MDX source subset retains one `panel_init[21][18]` array in
+`firmware/nes/boot/display_test.c`. The parent FM1-NES study compared it with
+a second array in `fm1_board.c`, which is not bundled here. Its comments
+identify FM-1_010 analysis as its origin. Later corroboration
 does not make that development clean-room or reassign its source to the SDK.
 
 The padded 378-byte array SHA-256 is
@@ -30,7 +31,7 @@ References:
 
 The PDFs carry rights/confidentiality notices. Public hosting is not permission
 to redistribute the documents; neither PDF nor page images are bundled here.
-SDK license/attribution boundaries are in [PROVENANCE.md](PROVENANCE.md).
+SDK license/attribution boundaries are in [FM1_PROVENANCE.md](FM1_PROVENANCE.md).
 
 ## All 21 records
 
@@ -43,10 +44,10 @@ source alternatives are retained, not evaluated by a C preprocessor.
 Decision codes describe the engineering evidence, **not publication permission**:
 
 - **K**: keep for now; routine documented operation with a usable reference.
-- **B**: keep privately pending the publication decision; board calibration or
-  geometry still needs an independent panel/board basis if it is to be replaced.
-- **Q**: keep privately pending the publication decision; resolve a specific
-  controller/protocol discrepancy before proposing a replacement.
+- **B**: board calibration or geometry still needs an independent panel/board
+  basis if it is to be replaced.
+- **Q**: resolve a specific controller/protocol discrepancy before proposing a
+  replacement.
 
 | Row | Command / payload from local source | V reference: function, section (page) | Exact SDK candidates: file / line | Decision |
 | --- | --- | --- | --- | --- |
@@ -79,12 +80,12 @@ not independently justify every parameter or the complete FM-1 sequence.
 
 ## What the sender actually does
 
-- Row 1 is `{0x45,120}` internally. Both loops special-case its index and wait;
+- Row 1 is `{0x45,120}` internally. The retained loop special-cases its index and waits;
   they do not transmit command 45 or 120 data bytes.
 - Row 4 declares a five-byte payload but contains six explicit data bytes.
   Its final `33` is unused. The actual payload is **0C 0C 0C 00 33**, not the
   SDK V example's **0C 0C 00 33 33**. Padding is also not sent.
-- Both initialization functions fill a framebuffer and issue `29` separately
+- The retained initialization function fills a framebuffer and issues `29` separately
   after the table. It is not a missing table row.
 - The row window encodes 40 through 279: 240 rows. The SDK V example instead
   uses 0 through 239. Correct module placement remains a board-level question.
@@ -107,21 +108,13 @@ is proposed in this review. Likewise, replacing voltage/gamma values merely to
 match another module could break the display and would not establish clean-room
 provenance. The external examples use different B7, BB, C3 and gamma values.
 
-## Reproduce the literal comparison
+## Comparison reproducibility
 
-Use an existing SDK checkout at the exact pin; this command performs no fetch,
-build, device access or write:
-
-```powershell
-python scripts/audit_lcd_references.py --sdk <existing-sdk-checkout>
-python -m unittest discover -s tests -v
-```
-
-The script reads pinned Git blobs, not potentially modified working-tree SDK
-files, checks both local arrays and prints JSON with match locations and hashes.
-It is a bounded literal parser for these sources, not a general C interpreter.
-Tests run without an SDK; the real pinned-SDK comparison is a separate local
-check. Datasheet interpretation is manual, not verified by the script.
+This MDX source subset does not include the parent project's
+`scripts/audit_lcd_references.py` or its comparison tests. The retained array
+can be inspected in `firmware/nes/boot/display_test.c`; the SDK comparisons
+above refer to the pinned source revision. Datasheet interpretation remains
+manual and has not been verified against the exact FM-1 module.
 
 Pinned SDK blob SHA-256 values:
 
@@ -138,9 +131,8 @@ entire table SDK-derived or silently change a working sequence for cosmetic
 provenance reasons. This comparison neither mandates discarding technical
 constants nor grants permission to publish the retained implementation.
 
-If the maintainer requires a release without the retained stock-derived table,
-prepare a separately reviewed panel profile from suitable documentation/licensed
-examples and qualify it on the actual module, retaining an honest development
-record. Until that decision, leave the candidate private. The stock boot ABI and
-other board findings remain separate items in [PUBLICATION.md](PUBLICATION.md);
-replacing this table alone would not settle them.
+The 2026-10-07 source-publication decision retains this working table with its
+stock-analysis origin explicitly disclosed in [PUBLICATION.md](PUBLICATION.md).
+A replacement would require a separately reviewed panel profile and a device
+test. The stock boot ABI and other board findings remain separate items; replacing
+this table alone would not settle them.

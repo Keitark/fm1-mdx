@@ -1,9 +1,11 @@
 # Provenance and redistribution boundaries
 
-Project-authored material is offered under Apache-2.0 to the extent we hold the
-necessary rights; see LICENSE and the source-reference map in PROVENANCE.md.
-This does not relicense other parties' code, firmware, trademarks or game assets.
-Review ownership of any future additions before publishing them.
+This file records the inherited FM1 board-support dependencies. The MDX
+repository's top-level [LICENSE](LICENSE) is GPL-3.0; original MDX additions
+are offered under GPL-3.0-or-later. Apache-2.0 still applies to the respective
+upstream inputs and notices described below. See [FM1_PROVENANCE.md](FM1_PROVENANCE.md)
+and [PUBLICATION.md](PUBLICATION.md). No license here changes ownership of
+third-party code, firmware, trademarks or game assets.
 
 ## External dependencies
 
@@ -33,15 +35,15 @@ The host build-audit scripts also contain instruction-byte reference templates,
 not only hashes: some check SDK startup code and others check project-compiled
 wrappers. No complete SDK library or executable patch is included, but these
 SDK-derived reference sequences are part of the source review. See
-PUBLICATION_AUDIT.md for their origin and the separate linked-library boundary.
+[PUBLICATION.md](PUBLICATION.md) for their origin and the separate linked-library boundary.
 
 ## Hardware research and scope
 
 Board-specific register values, LCD initialization data, key decoding and power
 parameters were recovered through investigation of the FM-1's behavior/firmware.
-In particular, the two `panel_init` arrays retain a 21-record table recovered
+In particular, the retained `panel_init` array contains a 21-record table recovered
 from FM-1_010. Excluding full stock images does not mean that no stock-derived
-data remains. Its publication review is recorded separately in PUBLICATION.md.
+data remains. Its publication review is recorded in [PUBLICATION.md](PUBLICATION.md).
 This is **not a claimed clean-room implementation**. The public source retains
 that provenance and does not include stock ROMs, raw disassembly, firmware
 patch payloads, chip keys, downloaded vendor archives or private evidence logs.
@@ -52,7 +54,8 @@ Official SDK documentation and community research, including
 [AL-255/FM-1-RE](https://github.com/AL-255/FM-1-RE), are technical references.
 A link is not a claim that this project's existing implementation originated
 there, nor permission to redistribute third-party firmware hosted elsewhere.
-PROVENANCE.md distinguishes documented chip APIs from FM-1-specific findings.
+[FM1_PROVENANCE.md](FM1_PROVENANCE.md) distinguishes documented chip APIs from
+FM-1-specific findings.
 
 The diagnostic ROM generator is original project source: checkerboard graphics,
 pulse sound and controller checks, with no Nintendo/game assets. No commercial

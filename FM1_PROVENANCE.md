@@ -17,24 +17,25 @@ changed for this publication-preparation review.
 
 ## Focused source map
 
-Paths below are relative to this repository. SDK paths refer to the pinned
-external checkout, not bundled files. These are evidence categories, not
-automatic permission or infringement determinations.
+The map originated in the broader FM1-NES study. Some parent-project paths are
+not in this MDX source subset; those rows are marked as background below. SDK
+paths refer to the pinned external checkout, not bundled files. These are
+evidence categories, not automatic permission or infringement determinations.
 
 | Local component | Basis and corresponding reference | What remains FM-1-specific or unreviewed |
 | --- | --- | --- |
 | `firmware/nes/boot/board_power.c`, `board_power.h`, `board.c` | Calls the SDK `power_init` API using `struct low_power_param`; declarations/selectors are in `include_lib/driver/cpu/wl82/asm/power_interface.h` and `p33.h`. Official system docs describe these fields. | The selected voltage levels and configuration were recovered from FM-1_010. SDK field definitions do not independently establish the right settings for this PCB. |
 | `firmware/nes/boot/boot_compat.c` | Project adapter calls the existing SDK `boot_info_init`, copying six input words and extending the argument to 23 words. | The stock bootloader handoff contract comes from stock analysis. Official UBOOT selection documentation does not establish this exact ABI. |
-| `firmware/nes/boot/display_test.c`, `firmware/nes/src/fm1_board.c` | GPIO/register APIs are available in SDK `asm/gpio.h`, `asm/WL82.h`; SDK `apps/common/ui/lcd_driver/lcd_st7789s.c`, `lcd_st7789v.c`, `lcd_st7789t3.c` provide controller examples. | Both `panel_init` arrays explicitly retain the same 21 x 18-byte FM-1_010 table. SDK ST7789S initialization values inspected in this review differ; the table has NOT been reclassified as SDK-origin. PA2 sequencing, wiring and panel settings remain board-specific. |
-| `firmware/nes/boot/pre_os_display.c`, `boot_trace.c`, `wl82_services.c` | Project startup diagnostics and adapters around SDK OS, interrupt, GPIO and audio services. Official system/peripheral docs provide API context. | Initialization ordering and board adaptation need their own evidence; API documentation alone does not establish complete implementation provenance. |
+| `firmware/nes/boot/display_test.c` | GPIO/register APIs are available in SDK `asm/gpio.h`, `asm/WL82.h`; SDK `apps/common/ui/lcd_driver/lcd_st7789s.c`, `lcd_st7789v.c`, `lcd_st7789t3.c` provide controller examples. | The retained `panel_init` array contains the 21 x 18-byte FM-1_010 table. The parent project's second copy is not bundled here. SDK ST7789S initialization values inspected in this review differ; the table has NOT been reclassified as SDK-origin. PA2 sequencing, wiring and panel settings remain board-specific. |
+| `firmware/nes/boot/boot_trace.c`; parent-project `pre_os_display.c`, `wl82_services.c` absent here | Project startup diagnostics and adapters around SDK OS, interrupt, GPIO and audio services. Official system/peripheral docs provide API context. | Initialization ordering and board adaptation need their own evidence; API documentation alone does not establish complete implementation provenance. |
 | `firmware/nes/src/fm1_stock_keys.c`, `fm1_wl82_keyscan.c`, `fm1_volume.c` | Project scanning/decoding and ADC handling informed by stock behavior and device tests; SDK SPI/GPIO/ADC documentation describes the interfaces. | Physical slot mapping, encoder protocol and volume input routing are device-specific findings, not generic SDK facts. |
 | `firmware/usb-diag/vendor_overlay.py` | Contains matching/replacement fragments adapting pinned SDK `apps/common/usb/device/{cdc.c,usb_device.c,msd_upgrade.c}` and PeakRacing `src/{nes.c,nes_apu.c}`. | These are upstream adaptations, not wholly independent source. Generated copies preserve headers and identify project modifications. |
 | `firmware/usb-diag/descriptors.c` | Descriptor code uses the inherited SDK USB identity `3654:5155`, with project diagnostic strings. | No project VID/PID allocation or permission for product distribution has been established by this review. |
 | `firmware/nes/audit_{boot,power,pre_os}.py` and related host tests | Project regression checks for reviewed layout, parameters and generated instructions. `audit_power.py` hashes SDK-generated power code, rather than shipping that function as stock machine code. | Audit hashes and test success are technical checks, not evidence of redistribution permission. |
-| `firmware/nes/tests/make_diagnostic_rom.py` | Project diagnostic generator for original checkerboard/controller/pulse tests; no commercial ROM input. | A user-supplied ROM remains outside this source release and requires its own rights assessment. |
+| Parent-project `make_diagnostic_rom.py` (not bundled here) | Original diagnostic generator; no commercial ROM input. | A user-supplied ROM remains outside this source release and requires its own rights assessment. |
 | Other project adapters, effects, tests, headers, build/release scripts and documentation | Maintained as project contributions; dependencies are separately identified above. | This focused review does not certify exhaustive independent authorship of every remaining line. New borrowed material needs explicit origin/license review. |
 
-The complete 21-record comparison is in [LCD_PROVENANCE.md](LCD_PROVENANCE.md).
+The complete 21-record comparison is in [FM1_LCD_PROVENANCE.md](FM1_LCD_PROVENANCE.md).
 Ten records match candidates in the pinned SDK S/V/T3 initializers, while three
 protocol/reference discrepancies need further technical review. The report
 preserves the table's known origin; it does not approve or change runtime code.
@@ -65,14 +66,14 @@ the applicable terms and notices for each input and for any embedded assets.
 
 ## Review outcome
 
-The remaining bounded review is recorded in
-[PUBLICATION_AUDIT.md](PUBLICATION_AUDIT.md), including source licenses, the
-boot/power comparison, SDK-derived instruction templates in host audit scripts,
-and a point-in-time GitHub surface inventory. Source-only does not mean that
-every included byte sequence originated independently of the SDK.
+The MDX source-publication review is recorded in
+[PUBLICATION.md](PUBLICATION.md), including source licenses, stock-derived
+board data, SDK-derived instruction templates in host audit scripts and a
+point-in-time GitHub history check. Source-only does not mean that every
+included byte sequence originated independently of the SDK.
 
 The SDK supports understanding and implementing much of the chip-facing code.
 It does not, on its own, clear the retained LCD table, establish the stock ABI,
 or verify the FM-1 wiring. No ownership determination is inferred from matching
 numeric values; a provenance flag is not a finding of infringement. See
-PUBLICATION.md for the remaining publication decisions.
+[PUBLICATION.md](PUBLICATION.md) for the remaining distribution boundaries.

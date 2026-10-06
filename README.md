@@ -90,7 +90,9 @@ also outside this first candidate. MIDI-note commands are available over CDC.
 `firmware/usb-diag` holds shared CDC recovery services. `firmware/nes` holds the
 reused board-support and audit files only; no NES core or game is bundled.
 
-Original project additions are GPL-3.0-or-later; dependency notices are retained.
-See [THIRD_PARTY.md](THIRD_PARTY.md) and [VALIDATION.md](VALIDATION.md).
+Original MDX additions are GPL-3.0-or-later; upstream notices remain applicable.
+See [THIRD_PARTY.md](THIRD_PARTY.md), the [source publication record](PUBLICATION.md)
+and [VALIDATION.md](VALIDATION.md). The latest karaoke guide changes are in
+[draft PR #19](https://github.com/Keitark/fm1-mdx/pull/19) pending physical acceptance.
 This is independent experimental firmware, with stock-analysis provenance, and
 is not an official M-VAVE or Jieli product.
