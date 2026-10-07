@@ -233,6 +233,10 @@ def audit(elf,app,require_peripherals=False,rom='rom50',display_only=False,requi
             # Guide control link: trace0x1c4f5d8 = ota_status0x1c4f410+456.
             # Reviewed store0x2002768 d1 ec 0b 1c; same46-byte wrapper.
             if usb_audio:encodings.update({456:'d1 ec 0b 1c'})
+            # Timing-guide composite link: trace0x1c4f624 = ota_status0x1c4f450
+            # +468. Reviewed store0x200276c d1 ec 07 1d; same46-byte wrapper
+            # and22-byte marker, with calls and all other operands still checked.
+            if usb_audio and usb_mdx:encodings.update({468:'d1 ec 07 1d'})
             # CDC-only guide link: trace0x1c4d378 = ota_status0x1c4d1c0+440.
             # Reviewed46-byte wrapper store d1 ec0b 1b.
             if usb_mdx and not usb_audio:encodings.update({440:'d1 ec 0b 1b'})

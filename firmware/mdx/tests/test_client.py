@@ -22,9 +22,16 @@ class ClientTests(unittest.TestCase):
         with patch.object(client,'exchange',return_value='reply') as exchange:
             client.control_reply(object(),'MDX GUIDE')
             self.assertEqual(exchange.call_args.kwargs['expected_prefix'],'MDX GUIDE ')
-            for command in ('MDX GUIDE 0','MDX GUIDE 1'):
+            for command in ('MDX GUIDE 0','MDX GUIDE 1','MDX GUIDE 2'):
                 client.control_reply(object(),command)
                 self.assertEqual(exchange.call_args.kwargs['expected_prefix'],'OK MDX QUEUED')
+
+    def test_guide_modes_and_legacy_enable(self):
+        self.assertEqual(client.guide_command(),'MDX GUIDE')
+        self.assertEqual(client.guide_command(enable=1),'MDX GUIDE 1')
+        self.assertEqual(client.guide_command(enable=0),'MDX GUIDE 0')
+        for mode,value in (('off',0),('note',1),('timing',2)):
+            self.assertEqual(client.guide_command(mode=mode),f'MDX GUIDE {value}')
 
     def test_audio_reply_ignores_stale_status(self):
         class Port:

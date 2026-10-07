@@ -93,4 +93,33 @@ static void timing_commands(void){
     for(i=0;i<100 && !g.preview.ended;i++)fm1_guide_step(&g,due[2],2);
     CHECK(g.preview.ended && !g.count && !g.error);
 }
-int main(void){selectors();keyboard();preview();timing_commands();puts("PASS detents, partial reversal, burst motion, guide lookahead, exact pitches/timestamps, early hits, wrong keys, timed expiry, loops, synchronization, rests, tempo, ties, delayed key-on and unchanged audio");return 0;}
+static void timing_only(void) {
+    unsigned i;uint64_t first;
+    CHECK(!fm1_mdx_load(&p,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size));
+    CHECK(!fm1_mdx_mute(&p,0,1));p.sequence.tracks[0].key_on_delay=3;
+    fm1_guide_start_mode(&g,&p,FM1_GUIDE_TIMING);
+    for(i=0;i<64 && g.count<2;i++)fm1_guide_step(&g,0,2);
+    CHECK(g.active && g.mode==FM1_GUIDE_TIMING && g.count>=2 && fm1_guide_note(&g)==60);
+    first=g.due[g.head];g.due[g.head]=FM1_GUIDE_TIMING_LEAD*2u;
+    g.now=g.due[g.head]-FM1_GUIDE_TIMING_PULSE-1;CHECK(!fm1_guide_lights(&g,-3));
+    g.now=g.due[g.head]-FM1_GUIDE_TIMING_PULSE;
+    CHECK(fm1_guide_lights(&g,-3)==FM1_GUIDE_NOTE_LIGHTS && fm1_guide_lights(&g,2)==FM1_GUIDE_NOTE_LIGHTS);
+    for(i=13;i<=108;i++){g.note[g.head]=(uint8_t)i;CHECK(fm1_guide_lights(&g,0)==FM1_GUIDE_NOTE_LIGHTS);}
+    g.note[g.head]=60;g.due[g.head]=first;
+    g.now=first;CHECK(fm1_guide_progress(&g)==255);
+    fm1_guide_step(&g,first,0);CHECK(fm1_guide_note(&g)==60 && !g.missed);
+    fm1_guide_step(&g,first+FM1_GUIDE_TIMING_LATE-1,0);CHECK(fm1_guide_note(&g)==60 && !g.missed);
+    CHECK(fm1_guide_hit(&g,60) && g.hits==1); /* Late hit consumes only this cue. */
+    first=g.due[g.head];
+    fm1_guide_step(&g,first+FM1_GUIDE_TIMING_LATE,0);CHECK(g.missed==1);
+    fm1_guide_stop(&g);CHECK(!fm1_guide_progress(&g) && !fm1_guide_lights(&g,0));
+    /* Test the full countdown range independently of song tempo. */
+    memset(&g,0,sizeof(g));g.active=g.count=1;g.mode=FM1_GUIDE_TIMING;
+    g.due[0]=FM1_GUIDE_TIMING_LEAD*2u;
+    g.now=FM1_GUIDE_TIMING_LEAD;CHECK(!fm1_guide_progress(&g));
+    g.now+=FM1_GUIDE_TIMING_LEAD/2;CHECK(fm1_guide_progress(&g)==127);
+    g.due[0]=UINT64_MAX-FM1_GUIDE_TIMING_LATE;g.now=g.due[0];
+    fm1_guide_step(&g,g.now+FM1_GUIDE_TIMING_LATE-1,0);CHECK(g.count==1);
+    fm1_guide_step(&g,UINT64_MAX,0);CHECK(!g.count && g.missed==1);
+}
+int main(void){selectors();keyboard();preview();timing_commands();timing_only();puts("PASS detents, note guide, exact score pitches/timestamps, silent lookahead, timing countdown, hidden-pitch LEDs and late expiry");return 0;}

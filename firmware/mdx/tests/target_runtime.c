@@ -136,6 +136,61 @@ static void audio_boundary_tests(void) {
     rd=wr=underruns=frames=callback_ms=callback_gap_ms=late_callbacks=rebuffer_events=rebuffer_frames=render_max_ms=0;
     callback_seen=0;queue_min=2048;ms=0;memset(&mdx_volume,0,sizeof(mdx_volume));
 }
+static void timing_seed(unsigned first,unsigned second) {
+    memset(&guide,0,sizeof(guide));guide.active=1;guide.mode=FM1_GUIDE_TIMING;
+    guide.selected=player.selected;guide.count=2;guide.note[0]=(uint8_t)first;guide.note[1]=(uint8_t)second;
+    guide.due[0]=RETROFM_PL_CLOCK_HZ*2u;guide.due[1]=RETROFM_PL_CLOCK_HZ*3u;
+}
+static void timing_panel_tests(void) {
+    static fm1_mdx_player reference;
+    unsigned slot;uint8_t patch[192];int16_t actual[256],expected[256];
+    CHECK(!fm1_mdx_load(&player,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size));
+    CHECK(!fm1_mdx_load(&reference,fm1_demo_mdx,fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size));
+    CHECK(!fm1_mdx_mute(&reference,0,1));fm1_mdx_song_write(&reference,0x40,0x32);
+    control.available=control.running=1;action(FM1_MDX_GUIDE,FM1_GUIDE_TIMING,0);
+    CHECK(guide_enabled==2 && player.mute_mask==1);
+    fm1_mdx_song_write(&player,0x40,0x32);
+    /* Every physical note key, despite octave, supplies the score's pitch. */
+    for(slot=14;slot<41;slot++) {
+        uint64_t key=UINT64_C(1)<<slot;keyboard_octave=(int)(slot%6)-3;timing_seed(60,64);
+        memcpy(patch,player.registers+0x40,sizeof(patch));
+        panel_edges(key,0,key);
+        CHECK(player.live_note[0]==60 && keyboard_note==60 && keyboard_slot==slot && guide.hits==1);
+        CHECK(!memcmp(patch,player.registers+0x40,sizeof(patch)));
+        CHECK(fm1_guide_note(&guide)==64);
+        CHECK(!fm1_mdx_note(&reference,60,1));
+        CHECK(!fm1_mdx_render(&player,actual,128) && !fm1_mdx_render(&reference,expected,128));
+        CHECK(!memcmp(actual,expected,sizeof(actual))); /* Original-patch, correct-pitch audio. */
+        CHECK(!fm1_mdx_note(&reference,60,0));
+        panel_edges(0,key,0);CHECK(player.live_note[0]==-1);
+    }
+    timing_seed(60,64);panel_edges((UINT64_C(1)<<14)|(UINT64_C(1)<<15),0,0);
+    CHECK(guide.hits==1 && keyboard_slot==14 && player.live_note[0]==60);
+    panel_edges(UINT64_C(1)<<15,0,0);CHECK(guide.hits==2 && player.live_note[0]==64);
+    panel_edges(0,UINT64_C(1)<<14,0);CHECK(player.live_note[0]==64);
+    panel_edges(0,UINT64_C(1)<<15,0);CHECK(player.live_note[0]==-1);
+    timing_seed(70,72);panel_edges(UINT64_C(1)<<14,0,0);
+    action(FM1_MDX_NOTE,100,1);CHECK(player.live_note[0]==72 && keyboard_slot==41 && usb_note_key==100);
+    panel_edges(0,UINT64_C(1)<<14,0);action(FM1_MDX_NOTE,99,0);CHECK(player.live_note[0]==72);
+    action(FM1_MDX_NOTE,100,0);CHECK(player.live_note[0]==-1 && usb_note_key==109);
+    timing_seed(104,108);action(FM1_MDX_NOTE,13,1);CHECK(player.live_note[0]==104);
+    action(FM1_MDX_MUTE,0,1);CHECK(usb_note_key==13); /* Idempotent mute retains owner. */
+    action(FM1_MDX_NOTE,13,0);CHECK(player.live_note[0]==-1);
+    guide.count=0;panel_edges(UINT64_C(1)<<14,0,0);action(FM1_MDX_NOTE,100,1);
+    CHECK(player.live_note[0]==-1 && !control.error && usb_note_key==109);
+    timing_seed(60,64);panel_edges(UINT64_C(1)<<14,0,0);
+    action(FM1_MDX_SELECT,1,0);CHECK(player.live_note[0]==-1 && keyboard_slot==41 && usb_note_key==109 && player.mute_mask==2);
+    guide_update(2048,2);CHECK(guide.active && guide.mode==2 && guide.selected==1);
+    timing_seed(68,70);ui_update(10);publish();command("MDX GUIDE");
+    CHECK(ui_live.guide==2 && ui_live.guide_note==-1 && !ui_live.guide_direction && ui_live.guide_pending);
+    CHECK(strstr(answer,"mode=timing") && strstr(answer,"note=-1") && strstr(answer,"pending=1"));
+    action(FM1_MDX_NOTE,30,1);CHECK(player.live_note[1]==68);
+    action(FM1_MDX_GUIDE,FM1_GUIDE_NOTE,0);CHECK(player.live_note[1]==-1 && !guide.active && keyboard_slot==41 && usb_note_key==109);
+    panel_edges(8,0,8);CHECK(control.request==FM1_MDX_GUIDE && control.a==2);control.request=0;action(FM1_MDX_GUIDE,2,0);
+    panel_edges(8,0,8);CHECK(control.request==FM1_MDX_GUIDE && !control.a);control.request=0;action(FM1_MDX_GUIDE,0,0);
+    panel_edges(8,0,8);CHECK(control.request==FM1_MDX_GUIDE && control.a==1);control.request=0;
+    silence();keyboard_octave=0;memset(&control,0,sizeof(control));
+}
 static void row_address_tests(void) {
     unsigned y;screen_frame=0;
     for(y=0;y<240;y++){CHECK(!ui_row(y));CHECK(lcd_y==y);}
@@ -156,7 +211,7 @@ static void ui_timing_tests(void) {
     for(i=0;i<16;i++)CHECK(!ui_live.parts[i] && !ui_live.hold[i] && !part_motion[i].level_milli);
     for(i=0;i<32;i++)CHECK(!ui_live.spectrum[i] && !ui_live.spectrum_hold[i] && !spectrum_motion[i].level_milli);
 }
-int main(void){row_address_tests();panel_tests();audio_boundary_tests();ui_timing_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
+int main(void){row_address_tests();panel_tests();timing_panel_tests();audio_boundary_tests();ui_timing_tests();CHECK(!fm1_peripheral_start_task());CHECK(worker);if(!setjmp(done))worker(0);
     CHECK(opened==1 && closed==1 && key_stopped==1 && lcd_stopped==1 && timer_deleted==1);
     CHECK(!audio_enabled && !scan_enabled && !alink && !keyirq && control.quiescent && !control.running);
     CHECK(fm1_peripheral_idle());puts("PASS MDX task, stereo DMA, controls, stop/upload exclusion, disconnect continuity, complete UBOOT teardown");return 0;

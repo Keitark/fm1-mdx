@@ -1,4 +1,5 @@
 #include "fm1_screen.h"
+#include "fm1_guide.h"
 #include <stdio.h>
 #include <string.h>
 #define RGB(r,g,b) (((r)>>3)<<11|((g)>>2)<<5|((b)>>3))
@@ -122,13 +123,20 @@ void fm1_screen_indices(const fm1_screen_view *v,unsigned y,uint8_t r[240]) {
         text(r,y,x+1,153,names[i],1,muted?15:selected?8:6);
     }
     if(y>=222 && y<229){
-        if(v->guide && v->guide_note>=0){
+        if(v->guide==FM1_GUIDE_TIMING){
+            snprintf(s,sizeof(s),"FM%u TIMING%s",v->selected+1,v->guide_pending?"":" WAIT");
+            if(v->guide_pending){
+                rect(r,y,86,222,146,7,2);rect(r,y,88,223,140,5,3);
+                rect(r,y,88,223,(int)v->guide_progress*140/255,5,v->guide_progress==255?8:5);
+                rect(r,y,229,223,1,5,8);
+            }
+        } else if(v->guide && v->guide_note>=0){
             static const char *notes[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
             snprintf(s,sizeof(s),"FM%u NEXT %s%d %s",v->selected+1,notes[v->guide_note%12],v->guide_note/12-1,v->guide_direction>0?"OCT+":v->guide_direction<0?"OCT-":"");
         } else snprintf(s,sizeof(s),"FM%u %s OCT%+d",v->selected+1,v->guide?"GUIDE ...":(v->mutes&(1u<<v->selected))?"KARAOKE":"MDX",v->octave);
         text(r,y,8,222,s,1,5);
     }
-    rect(r,y,0,233,240,7,1);text(r,y,3,233,"FX MUTE SEL GUIDE PLAY/STOP",1,6);
+    rect(r,y,0,233,240,7,1);text(r,y,3,233,v->guide==FM1_GUIDE_TIMING?"ANY NOTE KEY / SEL MODE":"FX MUTE SEL GUIDE PLAY/STOP",1,6);
 }
 void fm1_screen_row(const fm1_screen_view *v,unsigned y,uint8_t out[480]) {
     uint8_t r[240];unsigned x;fm1_screen_indices(v,y,r);
@@ -169,7 +177,8 @@ int fm1_screen_row_changed(const fm1_screen_view *a,const fm1_screen_view *b,uns
         }
         return 0;
     }
-    if(y>=222 && y<229)return a->selected!=b->selected || a->mutes!=b->mutes || a->octave!=b->octave || a->guide!=b->guide || a->guide_note!=b->guide_note || a->guide_direction!=b->guide_direction;
+    if(y>=222 && y<229)return a->selected!=b->selected || a->mutes!=b->mutes || a->octave!=b->octave || a->guide!=b->guide || a->guide_note!=b->guide_note || a->guide_direction!=b->guide_direction || a->guide_pending!=b->guide_pending || a->guide_progress!=b->guide_progress;
+    if(y>=233)return (a->guide==FM1_GUIDE_TIMING)!=(b->guide==FM1_GUIDE_TIMING);
     return 0;
 }
 static void dirty_plot(const fm1_screen_view *a,const fm1_screen_view *b,unsigned part,uint8_t rows[240]) {

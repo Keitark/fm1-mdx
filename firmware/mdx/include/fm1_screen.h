@@ -13,7 +13,8 @@ typedef struct {
     uint16_t mutes;
     uint8_t selected,running,tracks,uploaded;
     int8_t octave;
-    uint8_t guide;
+    uint8_t guide; /*0 off,1 note,2 timing-only */
+    uint8_t guide_pending,guide_progress;
     int8_t guide_note,guide_direction;
     uint32_t seconds;
 } fm1_screen_view;

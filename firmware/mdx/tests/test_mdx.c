@@ -75,7 +75,8 @@ int main(void) {
     unsigned i,n;uint8_t image[4096];char s[300];activity_tests();selection_tests();
     line("MDX GUIDE 1",0);CHECK(requested==FM1_MDX_GUIDE && !strncmp(response,"OK",2));
     line("MDX GUIDE 0",0);CHECK(requested==FM1_MDX_GUIDE && !strncmp(response,"OK",2));
-    line("MDX GUIDE 2",0);CHECK(!strncmp(response,"ERR",3));
+    line("MDX GUIDE 2",0);CHECK(requested==FM1_MDX_GUIDE && !strncmp(response,"OK",2));
+    line("MDX GUIDE 3",0);CHECK(!strncmp(response,"ERR",3));
     /* A linear source must remain linear at fractional sample positions.
        Also exercise negative full-scale differences without signed overflow. */
     CHECK(fm1_mdx_mix_sample(0,0,10000,0)==0);

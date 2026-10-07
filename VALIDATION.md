@@ -855,3 +855,51 @@ acceptance remains pending. This bounded observation does not qualify optical
 gain, USB recording or endurance. Private helper evidence is under
 flash run d93a8d48d2d44052a3378826dda4a48e and boot observation
 8652314192004b2894cc90a3203bec2c.
+
+## Timing-only karaoke, 2026-10-07 (linked, not installed)
+
+SEL now cycles Off, Note Guide, Timing Guide, Off. The existing note guide
+retains pitch matching and octave hints. Timing Guide uses the same bounded
+silent score preview, with a500ms countdown and all note-key LEDs lit together
+from100ms before the cue until it is hit or expires150ms after its due time.
+No note name, individual pitch LED or octave-direction hint is shown. Early
+presses consume the next candidate; the accompaniment never waits for input.
+
+Any physical note key or CDC NOTE key-on supplies the queued score pitch to the
+existing manual-note path. This retains the selected part's patch and parameter
+updates. Physical/USB key releases use their captured effective pitch; a stale
+release cannot stop a newer owner. A chord edge consumes one timing candidate.
+An empty preview ignores presses. Mode changes release manual notes; selection
+changes clear captures and rebuild the selected part's preview. All synth and
+preview work stays in the existing owner task; no per-sample work, extra timer,
+scanner transfer or IRQ was added.
+
+`python scripts/build.py host` passes18 CTests,9 client checks,4 screenshot
+checks and the descriptor-tree check. Added cases cover countdown boundaries,
+150ms late hit/expiry, pitch-independent LEDs, hidden-pitch footer pixels and
+dirty rows. The target lifecycle test exercises all27 physical note keys at
+different octave settings and compares their rendered audio byte-for-byte with
+the normal correct-pitch manual path. It also covers captured release ownership,
+physical/USB takeover, MIDI104 correction outside the keyboard's reach, empty
+cues, unchanged patch registers, mode cycling and selection changes. That target
+test passes after adding the audio comparison. Existing note-guide sequencing,
+sync/rest/tempo/tie/delay, unchanged-audio and stop/USB tests still pass.
+
+The integrated timing replay runs65 virtual seconds with500ppm USB drift and
+no modeled missing synth audio or USB errors. A separate8-second renderer preview
+shows the countdown and ANY NOTE KEY hint at240x240,30.00 modeled FPS, with zero
+rebuffering and player/peripheral errors. These host models do not measure real
+PI32 CPU load, key latency, LED current/brightness or physical USB continuity.
+
+The pinned SDK USB-audio/30MHz/RGB444 link, static audit and all11 linked
+audit/corruption checks pass. The additional
+state moves the boot trace to ota_status+468 and power globals to+252/+264/+288.
+Their emitted stores were reviewed at0x200276c and0x20012d8/0x2001306/0x20015c2;
+only these exact layouts were added to the audits. Wrapper/marker checks, symbol
+destinations and the normalized SDK power-body hash remain enforced.
+Application196560 bytes, SHA256
+1d45fc9b4888b56263a102c25c05d02f36e6b8e0a3003bdae1b9f7d5c9a065cd.
+The prior195696-byte application23e16002... and its linked metadata are preserved
+privately, alongside the previous verified full-image rollbackfb330d1a... .
+No device command or firmware write was performed in this implementation turn;
+physical acceptance and exact-candidate flash authorization remain outstanding.

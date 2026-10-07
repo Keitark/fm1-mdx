@@ -103,6 +103,10 @@ def send(port,data):
         raise
     return 'Song loaded into RAM; lost on power-off. Use play to start.'
 
+def guide_command(enable=None,mode=None):
+    if mode is not None:return 'MDX GUIDE '+str({'off':0,'note':1,'timing':2}[mode])
+    return 'MDX GUIDE'+(f' {enable}' if enable is not None else '')
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('action',choices=('list','upload','screenshot','status','input','audio','usb','timing','display','volume','scan','guide','play','stop','demo','select','mute','note'))
@@ -110,7 +114,9 @@ def main():
     p.add_argument('--output',type=Path,help='PNG path for screenshot (default: timestamped current-directory file)')
     p.add_argument('--track',type=int,help='1..8 for select;1..16 for mute')
     p.add_argument('--note',type=int,help='MIDI13..108');p.add_argument('--on',type=int,choices=(0,1),default=1)
-    p.add_argument('--enable',type=int,choices=(0,1),help='Enable/disable guide; omit to read guide status')
+    guide_options=p.add_mutually_exclusive_group()
+    guide_options.add_argument('--enable',type=int,choices=(0,1),help='Enable note guide or disable guide; omit to read status')
+    guide_options.add_argument('--mode',choices=('off','note','timing'),help='Guide mode; timing uses any note key with score pitch')
     a=p.parse_args();data=None
     if a.action=='upload':
         if not a.mdx:p.error('--mdx is required')
@@ -143,7 +149,7 @@ def main():
         if a.action=='select':command+=f' {a.track-1}'
         elif a.action=='mute':command+=f' {a.track-1:02x} {a.on}'
         elif a.action=='note':command+=f' {a.note:02x} {a.on}'
-        elif a.action=='guide' and a.enable is not None:command+=f' {a.enable}'
+        elif a.action=='guide':command=guide_command(a.enable,a.mode)
         print(control_reply(port,command))
         if a.action=='stop':wait_stopped(port)
         print(control_reply(port,'MDX STATUS'))

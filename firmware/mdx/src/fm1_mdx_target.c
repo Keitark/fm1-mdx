@@ -40,10 +40,11 @@ static unsigned guide_enabled;
 static uint64_t guide_lights;
 static fm1_audio_startup envelope;
 static spinlock_t control_lock,audio_lock,input_lock;
-typedef struct {unsigned request,a,b,running,available,selected,mutes,frames,error,underruns,shutdown,quiescent,panel,guide,guide_hits,guide_missed;int octave,last_panel,guide_note,guide_error;} fm1_mdx_control;
+typedef struct {unsigned request,a,b,running,available,selected,mutes,frames,error,underruns,shutdown,quiescent,panel,guide,guide_hits,guide_missed,guide_pending,guide_progress;int octave,last_panel,guide_note,guide_error;} fm1_mdx_control;
 static fm1_mdx_control control;
 static int keyboard_octave;
 static unsigned keyboard_slot=41,keyboard_note;
+static unsigned usb_note_key=109,usb_note_pitch;
 static int16_t ring[2048][2],block[FM1_MDX_BLOCK*2];
 static uint32_t rd,wr,underruns,frames;
 static uint32_t callback_ms,callback_gap_ms,late_callbacks,rebuffer_events,rebuffer_frames,render_max_ms;
@@ -117,7 +118,7 @@ int fm1_mdx_usb_command(const char *s,uint32_t now,fm1_mdx_reply reply,void *ctx
     }
     if(!strcmp(s,"MDX GUIDE")) {
         fm1_mdx_control v;char out[160];f=take(&control_lock);v=control;release(&control_lock,f);
-        snprintf(out,sizeof(out),"MDX GUIDE enabled=%u selected=%u note=%d hits=%u missed=%u error=%d\n",v.guide,v.selected,v.guide_note,v.guide_hits,v.guide_missed,v.guide_error);
+        snprintf(out,sizeof(out),"MDX GUIDE enabled=%u mode=%s selected=%u note=%d pending=%u progress=%u hits=%u missed=%u error=%d\n",!!v.guide,v.guide==FM1_GUIDE_TIMING?"timing":v.guide?"note":"off",v.selected,v.guide_note,v.guide_pending,v.guide_progress,v.guide_hits,v.guide_missed,v.guide_error);
         reply(ctx,out);return 1;
     }
     if(!strcmp(s,"MDX DISPLAY")) {
@@ -188,14 +189,32 @@ static void fm1_mdx_scan_tick(void *u) {
 static void publish(void) {
     unsigned f,fr,ur;f=take(&audio_lock);fr=frames;ur=underruns;release(&audio_lock,f);
     f=take(&control_lock);control.selected=player.selected;control.mutes=player.mute_mask;control.frames=fr;control.underruns=ur;control.error=(unsigned)player.error;
-    control.guide=guide_enabled;control.guide_note=fm1_guide_note(&guide);control.guide_hits=guide.hits;control.guide_missed=guide.missed;control.guide_error=guide.error;release(&control_lock,f);
+    control.guide=guide_enabled;control.guide_note=guide_enabled==FM1_GUIDE_TIMING?-1:fm1_guide_note(&guide);
+    control.guide_pending=guide.active && guide.count;control.guide_progress=fm1_guide_progress(&guide);
+    control.guide_hits=guide.hits;control.guide_missed=guide.missed;control.guide_error=guide.error;release(&control_lock,f);
+}
+static void note_owners_clear(void){keyboard_slot=41;usb_note_key=109;}
+static void manual_release(void) {
+    int pitch=player.live_note[player.selected];
+    if(pitch>=0)fm1_mdx_note(&player,(unsigned)pitch,0);
+    note_owners_clear();
+}
+static int manual_press(unsigned key,int *played) {
+    int pitch=(int)key,rc;*played=-1;
+    if(guide_enabled==FM1_GUIDE_TIMING) {
+        pitch=fm1_guide_note(&guide);
+        if(pitch<0)return 0; /* No candidate: a rest remains silent. */
+    }
+    rc=fm1_mdx_note(&player,(unsigned)pitch,1);
+    if(!rc){*played=pitch;fm1_guide_hit(&guide,(unsigned)pitch);}
+    return rc;
 }
 static void silence(void) {
     unsigned f=take(&audio_lock);rd=wr=0;primed=0;audio_playing=0;release(&audio_lock,f);
     fm1_mdx_stop(&player);
     fm1_guide_stop(&guide);guide_lights=0;
     f=take(&input_lock);fm1_wl82_keyscan_lights(&scanner,0);release(&input_lock,f);
-    keyboard_slot=41;
+    note_owners_clear();
     f=take(&control_lock);control.running=0;release(&control_lock,f);
 }
 static void panel_edges(uint64_t down,uint64_t up,uint64_t held) {
@@ -210,7 +229,7 @@ static void panel_edges(uint64_t down,uint64_t up,uint64_t held) {
     if(!upload.active && !control.request) {
         if(down&(UINT64_C(1)<<12))request(0,running?FM1_MDX_STOP:(uploaded_song&&upload.ready?FM1_MDX_PLAY:FM1_MDX_DEMO),0,0);
         else if(down&4)request(0,FM1_MDX_MUTE,player.selected,!(player.mute_mask&(1u<<player.selected)));
-        else if(down&8)request(0,FM1_MDX_GUIDE,!guide_enabled,0); /* SEL */
+        else if(down&8)request(0,FM1_MDX_GUIDE,(guide_enabled+1)%3,0); /* SEL */
     }
     release(&control_lock,f);
     if(!running)return;
@@ -221,7 +240,9 @@ static void panel_edges(uint64_t down,uint64_t up,uint64_t held) {
     }
     for(i=14;i<41;i++)if((down>>i)&1) {
         unsigned note=(unsigned)(53+(int)i-14+12*keyboard_octave);
-        if(!fm1_mdx_note(&player,note,1)){keyboard_slot=i;keyboard_note=note;fm1_guide_hit(&guide,note);}
+        int played;
+        if(!manual_press(note,&played) && played>=0){keyboard_slot=i;keyboard_note=(unsigned)played;usb_note_key=109;}
+        if(guide_enabled==FM1_GUIDE_TIMING)break; /* A chord edge is one timing hit. */
     }
 }
 static void shutdown(void) {
@@ -245,6 +266,7 @@ static void action(unsigned op,unsigned a,unsigned b) {
     if(op==FM1_MDX_STOP){silence();return;}
     if(op==FM1_MDX_DEMO || op==FM1_MDX_PLAY) {
         fm1_guide_stop(&guide);
+        note_owners_clear();
         ui_title_dirty=1;
         unsigned f=take(&audio_lock);rd=wr=0;primed=0;audio_playing=1;release(&audio_lock,f);
         if(op==FM1_MDX_PLAY) {
@@ -257,24 +279,28 @@ static void action(unsigned op,unsigned a,unsigned b) {
             if(!rc)rc=fm1_mdx_mute(&player,8,1);
         }
         if(!rc && guide_enabled)rc=fm1_mdx_mute(&player,player.selected,1);
-    } else if(op==FM1_MDX_SELECT)rc=fm1_mdx_select(&player,a);
-    else if(op==FM1_MDX_MUTE)rc=fm1_mdx_mute(&player,a,(int)b);
-    else if(op==FM1_MDX_NOTE){rc=fm1_mdx_note(&player,a,(int)b);if(!rc && b)fm1_guide_hit(&guide,a);}
-    else if(op==FM1_MDX_GUIDE){guide_enabled=!!a;if(a)rc=fm1_mdx_mute(&player,player.selected,1);else fm1_guide_stop(&guide);}
+    } else if(op==FM1_MDX_SELECT){unsigned previous=player.selected;rc=fm1_mdx_select(&player,a);if(!rc && previous!=player.selected)note_owners_clear();}
+    else if(op==FM1_MDX_MUTE){rc=fm1_mdx_mute(&player,a,(int)b);if(!rc && a==player.selected && player.live_note[a]<0)note_owners_clear();}
+    else if(op==FM1_MDX_NOTE){
+        if(b){int played;rc=manual_press(a,&played);if(!rc && played>=0){usb_note_key=a;usb_note_pitch=(unsigned)played;keyboard_slot=41;}}
+        else if(a==usb_note_key){rc=fm1_mdx_note(&player,usb_note_pitch,0);usb_note_key=109;}
+    }
+    else if(op==FM1_MDX_GUIDE){
+        if(a>FM1_GUIDE_TIMING)rc=-1;
+        else {if(a!=guide_enabled){manual_release();fm1_guide_stop(&guide);}guide_enabled=a;if(a)rc=fm1_mdx_mute(&player,player.selected,1);}
+    }
     if(rc){unsigned f=take(&control_lock);control.error=(unsigned)rc;release(&control_lock,f);}
 }
 static void guide_update(unsigned queued,unsigned budget) {
-    uint64_t audible,latency,lights=0;unsigned slot,f;int direction;
+    uint64_t audible,latency,lights=0;unsigned f;
     if(guide_enabled && player.playing && (player.mute_mask&(1u<<player.selected)) && !key_error) {
-        if(!guide.active || guide.selected!=player.selected)fm1_guide_start(&guide,&player);
+        if(!guide.active || guide.selected!=player.selected || guide.mode!=guide_enabled)fm1_guide_start_mode(&guide,&player,guide_enabled);
         /* Sequencing runs ahead to fill audio. Expire against the DAC queue's
            audible position, not the renderer's future position. */
         latency=(uint64_t)queued*RETROFM_PL_CLOCK_HZ/FM1_MDX_RATE;
         audible=player.cycles>latency?player.cycles-latency:0;
         fm1_guide_step(&guide,audible,budget);
-        slot=fm1_guide_key(&guide,keyboard_octave,&direction);
-        if(slot<41)lights|=UINT64_C(1)<<slot;
-        if(direction)lights|=UINT64_C(1)<<(direction>0?1:0);
+        lights=fm1_guide_lights(&guide,keyboard_octave);
     } else fm1_guide_stop(&guide);
     if(lights!=guide_lights){guide_lights=lights;f=take(&input_lock);fm1_wl82_keyscan_lights(&scanner,lights);release(&input_lock,f);}
 }
@@ -297,8 +323,9 @@ static void ui_update(uint32_t elapsed_ms) {
      }else ui_live.credit_scroll=0;}
     ui_live.running=(uint8_t)control.running;ui_live.selected=player.selected;ui_live.mutes=player.mute_mask;
     ui_live.tracks=player.mdx.track_count;ui_live.uploaded=(uint8_t)uploaded_song;ui_live.octave=(int8_t)keyboard_octave;
-    ui_live.guide=(uint8_t)guide_enabled;ui_live.guide_note=(int8_t)fm1_guide_note(&guide);
-    {int direction;fm1_guide_key(&guide,keyboard_octave,&direction);ui_live.guide_direction=(int8_t)direction;}
+    ui_live.guide=(uint8_t)guide_enabled;ui_live.guide_note=guide_enabled==FM1_GUIDE_TIMING?-1:(int8_t)fm1_guide_note(&guide);
+    ui_live.guide_pending=(uint8_t)(guide.active && guide.count);ui_live.guide_progress=(uint8_t)fm1_guide_progress(&guide);
+    {int direction=0;if(guide_enabled!=FM1_GUIDE_TIMING)fm1_guide_key(&guide,keyboard_octave,&direction);ui_live.guide_direction=(int8_t)direction;}
     ui_live.seconds=(uint32_t)(player.cycles/RETROFM_PL_CLOCK_HZ);
     /* Event spectrum with independently held/falling maximum lines. No FFT
        or per-sample part tap. The task advances all envelopes by elapsed time. */
