@@ -69,12 +69,24 @@ static void dirty_rows(void) {
     }
     for(y=0;y<240;y++)CHECK(!fm1_screen_row_changed(&a,&a,y));
 }
-static void timing_hidden_pitch(void) {
-    fm1_screen_view a={0},b;uint8_t left[240],right[240];unsigned y,n;
-    a.guide=2;a.guide_pending=1;a.guide_progress=128;b=a;
-    for(n=13;n<=108;n++) {
-        b.guide_note=(int8_t)n;b.guide_direction=(int8_t)(n%3-1);b.octave=(int8_t)(n%6-3);
-        for(y=222;y<229;y++){fm1_screen_indices(&a,y,left);fm1_screen_indices(&b,y,right);CHECK(!memcmp(left,right,240));}
+static void fun_hints(void) {
+    fm1_screen_view a={0},b;uint8_t left[240],right[240];unsigned y,n,changed;
+    a.guide=2;a.guide_pending=1;a.guide_progress=128;a.guide_note=60;
+    b=a;b.guide_note=64;changed=0;
+    for(y=222;y<229;y++){
+        fm1_screen_indices(&a,y,left);fm1_screen_indices(&b,y,right);
+        changed+=memcmp(left+86,right+86,12)!=0;
+        CHECK(!memcmp(left+154,right+154,78)); /* Pitch never changes the countdown. */
+    }
+    CHECK(changed);
+    for(n=0;n<2;n++){
+        b=a;b.guide_direction=n?1:-1;changed=0;
+        for(y=222;y<229;y++){
+            fm1_screen_indices(&a,y,left);fm1_screen_indices(&b,y,right);
+            changed+=memcmp(left+104,right+104,24)!=0;
+            CHECK(!memcmp(left+154,right+154,78));
+        }
+        CHECK(changed);
     }
     b=a;b.guide_progress=255;fm1_screen_indices(&a,225,left);fm1_screen_indices(&b,225,right);CHECK(memcmp(left,right,240));
     CHECK(fm1_screen_row_changed(&a,&b,225));
@@ -98,7 +110,7 @@ static void packed_rows(void) {
 }
 int main(void) {
     unsigned offset,i,crc=0xffffffffu,token;uint8_t row[480];char s[80];
-    title_tests();geometry_tests();dirty_rows();timing_hidden_pitch();packed_rows();command("MDX SHOT BEGIN",0);CHECK(strstr(answer,"NO_COMPLETE_FRAME"));
+    title_tests();geometry_tests();dirty_rows();fun_hints();packed_rows();command("MDX SHOT BEGIN",0);CHECK(strstr(answer,"NO_COMPLETE_FRAME"));
     strcpy(shown.title,"SUPER LAYDOCK");shown.running=1;shown.mutes=1;shown.spectrum[4]=200;shown.parts[8]=160;ready=1;
     command("MDX SHOT BEGIN",1);token=screen.token;CHECK(screen.active && screen.frame==7 && yields==60);
     memset(&shown,0,sizeof(shown)); /* Snapshot remains immutable while UI changes. */

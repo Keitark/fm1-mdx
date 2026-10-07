@@ -104,7 +104,7 @@ def send(port,data):
     return 'Song loaded into RAM; lost on power-off. Use play to start.'
 
 def guide_command(enable=None,mode=None):
-    if mode is not None:return 'MDX GUIDE '+str({'off':0,'note':1,'timing':2}[mode])
+    if mode is not None:return 'MDX GUIDE '+str({'off':0,'note':1,'fun':2,'timing':2}[mode])
     return 'MDX GUIDE'+(f' {enable}' if enable is not None else '')
 
 def main():
@@ -116,7 +116,7 @@ def main():
     p.add_argument('--note',type=int,help='MIDI13..108');p.add_argument('--on',type=int,choices=(0,1),default=1)
     guide_options=p.add_mutually_exclusive_group()
     guide_options.add_argument('--enable',type=int,choices=(0,1),help='Enable note guide or disable guide; omit to read status')
-    guide_options.add_argument('--mode',choices=('off','note','timing'),help='Guide mode; timing uses any note key with score pitch')
+    guide_options.add_argument('--mode',choices=('off','note','fun','timing'),help='Fun Mode shows hints and uses any note key with score pitch; timing is a legacy alias')
     a=p.parse_args();data=None
     if a.action=='upload':
         if not a.mdx:p.error('--mdx is required')

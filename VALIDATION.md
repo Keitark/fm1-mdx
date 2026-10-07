@@ -903,3 +903,34 @@ The prior195696-byte application23e16002... and its linked metadata are preserve
 privately, alongside the previous verified full-image rollbackfb330d1a... .
 No device command or firmware write was performed in this implementation turn;
 physical acceptance and exact-candidate flash authorization remain outstanding.
+
+## Fun Mode hints, 2026-10-08 (linked, not installed)
+
+The assisted karaoke option is now named Fun Mode. SEL cycles Off, Note Guide,
+Fun Mode, Off. Fun Mode shows the next note name and octave direction beside
+its500ms countdown, and lights the matching note key and OCT-/OCT+ using the
+same hint mapping as Note Guide. The previous all-key pulse is removed.
+Any note key still supplies the correct queued score pitch, irrespective of
+the key or octave setting, with the original patch and ongoing parameters.
+The150ms late window, immediate early hit, release ownership and track-follow
+behavior are retained. CDC mode2 reports mode=fun and the score note; the client
+accepts --mode fun and keeps --mode timing as an alias.
+
+`python scripts/build.py host` passes18 CTests,9 client tests,4 screenshot tests
+and the descriptor-tree check. The existing all27-key audio comparison remains
+sample-identical to the correct-pitch manual path. Updated checks verify the
+visible note and both octave-direction footer hints, unchanged countdown pixels,
+note/octave LEDs identical to Note Guide throughout the MIDI/octave ranges,
+mode cycling, telemetry, release ownership and late expiry. The integrated
+Fun Mode replay passes65 virtual seconds with500ppm USB drift. An8-second actual
+renderer preview shows FUN NEXT C4 beside the bar and ANY NOTE KEY at240x240,
+30.00 modeled FPS, with zero missing audio, rebuffers or USB/player/LCD errors.
+
+The pinned SDK composite USB-audio/30MHz/RGB444 link and static audits pass;
+all11 linked audit/corruption checks pass without changing audit allowances.
+Application197040 bytes, SHA256
+82e88152d499ccadf1ed4c0f20605d80e3907c9101eda4a394616a2194aa9e61.
+The preceding linked application1d45fc9b... and its ELF/metadata are preserved
+privately. The verified previous full-image rollbackfb330d1a... is retained.
+No device command or flash was performed; physical display, LED, input/audio
+and USB acceptance remain pending. Host models do not measure hardware CPU load.

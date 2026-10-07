@@ -45,7 +45,7 @@ Other independently muted parts keep their settings. Selecting the same part
 leaves a held manual note untouched. With karaoke off, selection stays unmuted.
 The selection-follow correction is installed; physical meter acceptance is pending.
 
-SEL cycles **Off -> Note Guide -> Timing Guide -> Off** in the new candidate.
+SEL cycles **Off -> Note Guide -> Fun Mode -> Off** in the new candidate.
 Enabling either guide mutes the selected FM part's song triggers. Note Guide
 lights its next keyboard note as before.
 OCT-/OCT+ also lights when an octave shift is required. The footer shows the
@@ -58,8 +58,9 @@ karaoke part when SELECT moves its mute. Stop clears the lights; restarting
 with guide enabled mutes the initially selected FM part again. Guidance covers
 FM1-8, not PCM sample keys; the physical keyboard range is MIDI17-103.
 
-**Timing Guide** hides the note name and octave hint. A bar fills during the
-last500ms before the cue; all note-key LEDs light together from100ms before it.
+**Fun Mode** shows the next note name and octave direction, and lights the
+matching note key and OCT-/OCT+ as in Note Guide. A countdown bar fills during
+the last500ms before the cue.
 Press any note key to play the next queued score pitch with the selected part's
 original patch, regardless of the physical key or octave setting. An early press
 advances immediately; a cue remains available until150ms after its scheduled
@@ -67,7 +68,7 @@ time. Missed cues expire while the accompaniment continues. Releasing the key
 stops the pitch captured when it was pressed. A simultaneous chord counts as
 one press; panel buttons retain their controls. With no queued note, presses
 are silent. This correction can play score notes outside the physical keyboard
-range, within MIDI13-108. The timing-only option is built but not yet flashed.
+range, within MIDI13-108. Fun Mode is built but not yet flashed.
 
 The installed combined correction blanks LEDs during the paced scan idle and
 lights the final row during the next existing transfer. All rows receive one
@@ -82,8 +83,9 @@ The existing1ms timer and11 transfers remain; GPIO drive settings are unchanged.
 Full flash readback is verified; live scanning retains approximately1kHz sweep
 pacing with brighter timing active and no reported faults. Physical brightness
 and key/audio acceptance are pending.
-USB equivalents: `guide --mode note`, `guide --mode timing`, `guide --mode off`,
-or `guide` for status. Existing `guide --enable 1/0` selects Note Guide/Off,
+USB equivalents: `guide --mode note`, `guide --mode fun`, `guide --mode off`,
+or `guide` for status. `--mode timing` remains an alias for Fun Mode.
+Existing `guide --enable 1/0` selects Note Guide/Off,
 using `python firmware/mdx/usb_client.py ... --port <FM1 CDC port>`.
 
 Slots14–40 are the keyboard, MIDI53–79 before octave shifting. The panel order

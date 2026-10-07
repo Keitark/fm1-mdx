@@ -4,11 +4,9 @@
 /* A silent sequencing copy, never a second synth. Bounded cooperative work,
    with the same parser for repeats, synchronization, tempo and key-on delay. */
 #define FM1_GUIDE_QUEUE 8u
-enum { FM1_GUIDE_OFF,FM1_GUIDE_NOTE,FM1_GUIDE_TIMING };
-#define FM1_GUIDE_TIMING_LEAD (RETROFM_PL_CLOCK_HZ/2u)
-#define FM1_GUIDE_TIMING_PULSE (RETROFM_PL_CLOCK_HZ/10u)
-#define FM1_GUIDE_TIMING_LATE (RETROFM_PL_CLOCK_HZ*3u/20u)
-#define FM1_GUIDE_NOTE_LIGHTS (((UINT64_C(1)<<27)-1)<<14)
+enum { FM1_GUIDE_OFF,FM1_GUIDE_NOTE,FM1_GUIDE_FUN };
+#define FM1_GUIDE_FUN_LEAD (RETROFM_PL_CLOCK_HZ/2u)
+#define FM1_GUIDE_FUN_LATE (RETROFM_PL_CLOCK_HZ*3u/20u)
 typedef struct {
     retrofm_mdx_sequencer preview;
     uint64_t due[FM1_GUIDE_QUEUE],now;
@@ -25,8 +23,8 @@ int fm1_guide_hit(fm1_guide *,unsigned midi_note);
    Direction -1/+1 lights OCT-/OCT+ when shifting is needed. */
 unsigned fm1_guide_key(const fm1_guide *,int octave,int *direction);
 int fm1_guide_note(const fm1_guide *);
-/* Timing-only progress rises0..255 during the last500ms before a cue.
-   All note keys light from100ms before it until hit or150ms late expiry. */
+/* Fun Mode progress rises0..255 during the last500ms before a cue.
+   Both modes light the next note key and required octave direction. */
 unsigned fm1_guide_progress(const fm1_guide *);
 uint64_t fm1_guide_lights(const fm1_guide *,int octave);
 #endif

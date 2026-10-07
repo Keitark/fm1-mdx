@@ -2,7 +2,7 @@
 #include <string.h>
 static bool preview_pcm(void *u,const retrofm_mdx_pcm_command *c){(void)u;(void)c;return true;}
 static int expired(const fm1_guide *g,uint64_t due,uint64_t now) {
-    return due<=now && (g->mode!=FM1_GUIDE_TIMING || now-due>=FM1_GUIDE_TIMING_LATE);
+    return due<=now && (g->mode!=FM1_GUIDE_FUN || now-due>=FM1_GUIDE_FUN_LATE);
 }
 static bool preview_event(void *u,const retrofm_event *e) {
     fm1_guide *g=u;
@@ -22,7 +22,7 @@ void fm1_guide_start(fm1_guide *g,const fm1_mdx_player *p) {
 }
 void fm1_guide_start_mode(fm1_guide *g,const fm1_mdx_player *p,unsigned mode) {
     memset(g,0,sizeof(*g));
-    if(!p->playing || p->selected>=8 || !(p->mute_mask&(1u<<p->selected)) || mode<FM1_GUIDE_NOTE || mode>FM1_GUIDE_TIMING)return;
+    if(!p->playing || p->selected>=8 || !(p->mute_mask&(1u<<p->selected)) || mode<FM1_GUIDE_NOTE || mode>FM1_GUIDE_FUN)return;
     g->mode=(uint8_t)mode;
     g->preview=p->sequence;g->selected=p->selected;g->active=1;
     g->preview.event_callback=preview_event;g->preview.callback_user=g;
@@ -60,15 +60,11 @@ unsigned fm1_guide_progress(const fm1_guide *g) {
     if(!g->active || !g->count)return 0;
     if(g->due[g->head]<=g->now)return 255;
     remaining=g->due[g->head]-g->now;
-    if(remaining>=FM1_GUIDE_TIMING_LEAD)return 0;
-    return (unsigned)((FM1_GUIDE_TIMING_LEAD-remaining)*255/FM1_GUIDE_TIMING_LEAD);
+    if(remaining>=FM1_GUIDE_FUN_LEAD)return 0;
+    return (unsigned)((FM1_GUIDE_FUN_LEAD-remaining)*255/FM1_GUIDE_FUN_LEAD);
 }
 uint64_t fm1_guide_lights(const fm1_guide *g,int octave) {
     int direction;unsigned slot;uint64_t lights=0;
-    if(g->mode==FM1_GUIDE_TIMING) {
-        if(g->active && g->count && (g->due[g->head]<=g->now || g->due[g->head]-g->now<=FM1_GUIDE_TIMING_PULSE))return FM1_GUIDE_NOTE_LIGHTS;
-        return 0;
-    }
     slot=fm1_guide_key(g,octave,&direction);
     if(slot<41)lights|=UINT64_C(1)<<slot;
     if(direction)lights|=UINT64_C(1)<<(direction>0?1:0);

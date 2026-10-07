@@ -65,8 +65,8 @@ add_test(NAME mdx_audio_replay_rgb444 COMMAND mdx_audio_replay444 --demo unused
   audio-replay-rgb444.wav 65 500 normal)
 add_test(NAME mdx_audio_replay_guide COMMAND mdx_audio_replay444 --demo unused
   audio-replay-guide.wav 65 500 guide)
-add_test(NAME mdx_audio_replay_timing COMMAND mdx_audio_replay444 --demo unused
-  audio-replay-timing.wav 65 500 timing)
+add_test(NAME mdx_audio_replay_fun COMMAND mdx_audio_replay444 --demo unused
+  audio-replay-fun.wav 65 500 fun)
 foreach(SPI_BAUD IN ITEMS 1 3)
   add_executable(lcd_profile_${SPI_BAUD} tests/lcd_profile.c)
   target_compile_definitions(lcd_profile_${SPI_BAUD} PRIVATE FM1_MDX_PLAYER=1 FM1_LCD_STOCK_DMA=1 FM1_LCD_STOCK_FILL=1 FM1_LCD_STOCK_SEQUENCE=1 FM1_MDX_LCD_RGB444=1 FM1_MDX_LCD_BAUD=${SPI_BAUD})

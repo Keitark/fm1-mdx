@@ -30,7 +30,7 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(client.guide_command(),'MDX GUIDE')
         self.assertEqual(client.guide_command(enable=1),'MDX GUIDE 1')
         self.assertEqual(client.guide_command(enable=0),'MDX GUIDE 0')
-        for mode,value in (('off',0),('note',1),('timing',2)):
+        for mode,value in (('off',0),('note',1),('fun',2),('timing',2)):
             self.assertEqual(client.guide_command(mode=mode),f'MDX GUIDE {value}')
 
     def test_audio_reply_ignores_stale_status(self):

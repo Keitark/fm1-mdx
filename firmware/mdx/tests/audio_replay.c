@@ -123,9 +123,9 @@ int main(int argc,char **argv){
     size_t mn,pn;unsigned char *m=0,*p=0;FILE *f;char usb[200];unsigned errors;
     CHECK(argc==7 || argc==8);duration=(unsigned)atoi(argv[4]);drift=atoi(argv[5]);stress=!strcmp(argv[6],"stress");
     CHECK(duration>=1&&duration<=3600&&drift>=-1000&&drift<=1000);
-    CHECK(stress||!strcmp(argv[6],"normal")||!strcmp(argv[6],"guide")||!strcmp(argv[6],"timing"));
+    CHECK(stress||!strcmp(argv[6],"normal")||!strcmp(argv[6],"guide")||!strcmp(argv[6],"fun")||!strcmp(argv[6],"timing"));
     if(!strcmp(argv[6],"guide"))guide_test=1;
-    if(!strcmp(argv[6],"timing"))guide_test=2;
+    if(!strcmp(argv[6],"fun")||!strcmp(argv[6],"timing"))guide_test=2;
     if(!strcmp(argv[1],"--demo")){mn=fm1_demo_mdx_size;pn=fm1_demo_pdx_size;m=(unsigned char *)fm1_demo_mdx;p=(unsigned char *)fm1_demo_pdx;}
     else {m=read_file(argv[1],&mn);p=read_file(argv[2],&pn);}
     CHECK(mn+pn+12<=sizeof(upload.bytes));memcpy(upload.bytes+12,m,mn);memcpy(upload.bytes+12+mn,p,pn);
