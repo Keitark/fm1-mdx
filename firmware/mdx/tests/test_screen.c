@@ -44,7 +44,7 @@ static void dirty_rows(void) {
     fm1_screen_view a={0},b;uint8_t old[480],next[480],dirty[240];unsigned trial,y,field;uint32_t seed=42;
     strcpy(a.title,"OLD TITLE");strcpy(a.subtitle,"OLD SUBTITLE");strcpy(a.credit,"Ar.By Artist");
     for(trial=0;trial<420;trial++) {
-        b=a;field=trial%17;seed=seed*1664525u+1013904223u;
+        b=a;field=trial%19;seed=seed*1664525u+1013904223u;
         switch(field) {
         case 0:b.seconds=seed;break;case 1:b.running^=1;break;
         case 2:b.title[seed%32]=(char)('A'+seed%26);break;
@@ -57,8 +57,9 @@ static void dirty_rows(void) {
         case 11:b.spectrum_hold[seed%32]=(uint8_t)seed;break;
         case 12:b.credit[seed%127]=(char)('A'+seed%26);break;
         case 13:b.credit_scroll=(uint16_t)(seed%600);break;
-        case 14:b.guide^=1;break;case 15:b.guide_note=(int8_t)(seed%109);break;
+        case 14:b.guide=(uint8_t)(seed%3);break;case 15:b.guide_note=(int8_t)(seed%109);break;
         case 16:b.guide_direction=(int8_t)(seed%3-1);break;
+        case 17:b.guide_pending^=1;break;case 18:b.guide_progress=(uint8_t)seed;break;
         }
         fm1_screen_dirty_rows(&a,&b,dirty);
         for(y=0;y<240;y++){fm1_screen_row(&a,y,old);fm1_screen_row(&b,y,next);
@@ -67,6 +68,29 @@ static void dirty_rows(void) {
         a=b;
     }
     for(y=0;y<240;y++)CHECK(!fm1_screen_row_changed(&a,&a,y));
+}
+static void fun_hints(void) {
+    fm1_screen_view a={0},b;uint8_t left[240],right[240];unsigned y,n,changed;
+    a.guide=2;a.guide_pending=1;a.guide_progress=128;a.guide_note=60;
+    b=a;b.guide_note=64;changed=0;
+    for(y=222;y<229;y++){
+        fm1_screen_indices(&a,y,left);fm1_screen_indices(&b,y,right);
+        changed+=memcmp(left+86,right+86,12)!=0;
+        CHECK(!memcmp(left+154,right+154,78)); /* Pitch never changes the countdown. */
+    }
+    CHECK(changed);
+    for(n=0;n<2;n++){
+        b=a;b.guide_direction=n?1:-1;changed=0;
+        for(y=222;y<229;y++){
+            fm1_screen_indices(&a,y,left);fm1_screen_indices(&b,y,right);
+            changed+=memcmp(left+104,right+104,24)!=0;
+            CHECK(!memcmp(left+154,right+154,78));
+        }
+        CHECK(changed);
+    }
+    b=a;b.guide_progress=255;fm1_screen_indices(&a,225,left);fm1_screen_indices(&b,225,right);CHECK(memcmp(left,right,240));
+    CHECK(fm1_screen_row_changed(&a,&b,225));
+    b=a;b.guide_pending=0;CHECK(fm1_screen_row_changed(&a,&b,222));
 }
 static void packed_rows(void) {
     fm1_screen_view v={0};uint8_t rgb[480],packed[362];unsigned y,x,i;
@@ -86,7 +110,7 @@ static void packed_rows(void) {
 }
 int main(void) {
     unsigned offset,i,crc=0xffffffffu,token;uint8_t row[480];char s[80];
-    title_tests();geometry_tests();dirty_rows();packed_rows();command("MDX SHOT BEGIN",0);CHECK(strstr(answer,"NO_COMPLETE_FRAME"));
+    title_tests();geometry_tests();dirty_rows();fun_hints();packed_rows();command("MDX SHOT BEGIN",0);CHECK(strstr(answer,"NO_COMPLETE_FRAME"));
     strcpy(shown.title,"SUPER LAYDOCK");shown.running=1;shown.mutes=1;shown.spectrum[4]=200;shown.parts[8]=160;ready=1;
     command("MDX SHOT BEGIN",1);token=screen.token;CHECK(screen.active && screen.frame==7 && yields==60);
     memset(&shown,0,sizeof(shown)); /* Snapshot remains immutable while UI changes. */

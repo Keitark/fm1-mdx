@@ -93,7 +93,7 @@ void fm1_volume_test_write(uint32_t a,uint32_t v){if(a==0x13100)adc=v&~0xc0u;}
 static void advance(unsigned n){
     while(n--){
         ms++;
-        if(guide_test && !guide_started && ms>=50 && uploaded_song && !control.request){control.request=FM1_MDX_GUIDE;control.a=1;guide_started=1;}
+        if(guide_test && !guide_started && ms>=50 && uploaded_song && !control.request){control.request=FM1_MDX_GUIDE;control.a=guide_test;guide_started=1;}
         if(duration>=600&&ms%360000==0){CHECK(!control.request);control.request=FM1_MDX_PLAY;song_restarts++;}
         if(stress&&ms%15000==0){replay_usb_stream(0);restarts++;}
         if(stress&&ms%15000==5&&ms>15000)replay_usb_stream(1);
@@ -123,8 +123,9 @@ int main(int argc,char **argv){
     size_t mn,pn;unsigned char *m=0,*p=0;FILE *f;char usb[200];unsigned errors;
     CHECK(argc==7 || argc==8);duration=(unsigned)atoi(argv[4]);drift=atoi(argv[5]);stress=!strcmp(argv[6],"stress");
     CHECK(duration>=1&&duration<=3600&&drift>=-1000&&drift<=1000);
-    CHECK(stress||!strcmp(argv[6],"normal")||!strcmp(argv[6],"guide"));
+    CHECK(stress||!strcmp(argv[6],"normal")||!strcmp(argv[6],"guide")||!strcmp(argv[6],"fun")||!strcmp(argv[6],"timing"));
     if(!strcmp(argv[6],"guide"))guide_test=1;
+    if(!strcmp(argv[6],"fun")||!strcmp(argv[6],"timing"))guide_test=2;
     if(!strcmp(argv[1],"--demo")){mn=fm1_demo_mdx_size;pn=fm1_demo_pdx_size;m=(unsigned char *)fm1_demo_mdx;p=(unsigned char *)fm1_demo_pdx;}
     else {m=read_file(argv[1],&mn);p=read_file(argv[2],&pn);}
     CHECK(mn+pn+12<=sizeof(upload.bytes));memcpy(upload.bytes+12,m,mn);memcpy(upload.bytes+12+mn,p,pn);
@@ -142,7 +143,7 @@ int main(int argc,char **argv){
     if(strcmp(argv[1],"--demo")){free(m);free(p);}
     CHECK(!player.error&&!lcd_error&&!audio_error);if(!stress)CHECK(!underruns&&!errors);
     if(stress&&duration>=65)CHECK(wrap_seeded&&restarts&&producer_stalls&&rebuffer_events);
-    if(guide_test){CHECK(guide_started && guide.active && !guide.error && guide.missed>0);fprintf(stderr,"Guide: missed=%u next=%d error=%d\n",guide.missed,fm1_guide_note(&guide),guide.error);}
+    if(guide_test){CHECK(guide_started && guide.active && guide.mode==guide_test && !guide.error && guide.missed>0);fprintf(stderr,"Guide: mode=%u missed=%u next=%d error=%d\n",guide.mode,guide.missed,fm1_guide_note(&guide),guide.error);}
     if(argc==8){unsigned y,x;uint8_t row[240];FILE *shot=fopen(argv[7],"wb");CHECK(shot);
         for(y=0;y<240;y++){fm1_screen_indices(&screen_shown,y,row);for(x=0;x<240;x+=2)fputc((row[x]<<4)|row[x+1],shot);}CHECK(!fclose(shot));}
     return 0;
