@@ -13,16 +13,24 @@ sys.path[:0]=[str(BOARD),str(USB)]
 from build_env import SDK,SDK_PIN,TC,MAKE,make_list,sdk_path
 from audit_boot import audit
 import vendor_overlay
+from private_song import select_private_song,generate_private_song
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--out',type=Path);p.add_argument('--usb-audio',action='store_true')
     p.add_argument('--lcd-rgb444',action='store_true')
     p.add_argument('--lcd-spi',type=int,choices=(12,15,30),default=12,help='Nominal MHz with60MHz LSB;30MHz is a bench experiment')
+    p.add_argument('--default-mdx',type=Path);p.add_argument('--default-pdx',type=Path)
+    p.add_argument('--default-mdx-sha256');p.add_argument('--default-pdx-sha256')
     a=p.parse_args();suffix=('-lcd%d%s'%(a.lcd_spi,'-444' if a.lcd_rgb444 else '-565')) if a.lcd_spi!=12 or a.lcd_rgb444 else ''
-    out=(a.out or ROOT/(('build/target-audio' if a.usb_audio else 'build/target')+suffix)).resolve();out.mkdir(parents=True,exist_ok=True)
+    private=select_private_song(a.default_mdx,a.default_pdx,a.default_mdx_sha256,a.default_pdx_sha256)
+    if private is not None and a.out is None:p.error('Private defaults require an explicit NEW --out path')
+    out=(a.out or ROOT/(('build/target-audio' if a.usb_audio else 'build/target')+suffix)).resolve()
+    sample_source=generate_private_song(private,out,ROOT) if private is not None else MDX/'samples/demo.c'
+    if private is None:out.mkdir(parents=True,exist_ok=True)
+    default_song=private.metadata if private is not None else {'kind':'original_demo','title':'FM1 original karaoke demo'}
     manifest=out/'build-manifest.json'
-    manifest.write_text(json.dumps({'status':'BUILDING_OR_FAILED','flashable':False})+'\n')
+    manifest.write_text(json.dumps({'status':'BUILDING_OR_FAILED','flashable':False,'default_kind':default_song['kind'],'default_song':default_song})+'\n')
     with (out/'build.log').open('w',encoding='utf8') as log:
         def run(args):
             r=subprocess.run(list(map(str,args)),cwd=out,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
@@ -40,6 +48,7 @@ def main():
             '-DFM1_KEYSCAN_IRQ=1','-DFM1_KEYSCAN_PACED=1','-DFM1_KEYSCAN_CLOCK_QUANTUM_US=10000',
             '-DFM1_KEYSCAN_LED_BAUD=119']
         includes=['-I'+str(MDX/n) for n in ('include','vendor/retrofm','vendor/mdxtools')]
+        if private is not None:defines+=['-DFM1_MDX_PRIVATE_DEFAULT=1']
         if a.lcd_rgb444:defines+=['-DFM1_MDX_LCD_RGB444=1']
         if a.lcd_spi!=12:defines+=['-DFM1_MDX_LCD_BAUD='+str({15:3,30:1}[a.lcd_spi])]
         if a.usb_audio:
@@ -52,7 +61,7 @@ def main():
         sources+=[USB/n for n in ('app_main.c','protocol.c','descriptors.c','usb_policy.c','dma.c','packet.c','rx_channel.c','boot_entry.c','peripheral_logic.c')]
         sources+=[BOARD/'boot/display_test.c',BOARD/'src/fm1_wl82_keyscan.c',BOARD/'src/fm1_stock_keys.c']
         fast=list((MDX/'src').glob('*.c'))+list((MDX/'vendor/retrofm').glob('*.c'))+list((MDX/'vendor/mdxtools').glob('*.c'))
-        fast+=[MDX/'samples/demo.c',BOARD/'src/fm1_volume.c',BOARD/'src/fm1_audio_queue.c']
+        fast+=[sample_source,BOARD/'src/fm1_volume.c',BOARD/'src/fm1_audio_queue.c']
         if a.usb_audio:fast+=[ROOT/'firmware/usb-audio'/n for n in ('bridge.c','profile.c','target.c')]
         sources+=fast+[SDK/'apps/common/usb/usb_config.c']
         overlays={}
@@ -91,13 +100,16 @@ def main():
         (out/'disassembly.asm').write_text(run([TC/'llvm-objdump.exe','-d','-mcpu=r3',elf]))
         report=audit(elf.read_bytes(),app.read_bytes(),usb_only=True,usb_peripheral_tests=True,usb_mdx=True,usb_audio=a.usb_audio,require_boot_trace=True,require_board_power=True)
         (out/'static-audit.json').write_text(json.dumps(report,indent=2)+'\n')
-        inputs=list(sources)+list(ROOT.rglob('*.h'))+[Path(__file__),BOARD/'audit_boot.py',BOARD/'audit_power.py',BOARD/'audit_pre_os.py',BOARD/'audit_usb_packet.py',BOARD/'build_env.py',USB/'vendor_overlay.py']
+        inputs=list(sources)+list(ROOT.rglob('*.h'))+[Path(__file__),Path(__file__).with_name('private_song.py'),Path(__file__).with_name('build.py'),BOARD/'audit_boot.py',BOARD/'audit_power.py',BOARD/'audit_pre_os.py',BOARD/'audit_usb_packet.py',BOARD/'build_env.py',USB/'vendor_overlay.py']
+        if private is not None:inputs += [private.mdx_path,private.pdx_path];private.verify_sources()
         result={'status':'LINKED_MDX_KARAOKE_UNTESTED','usb_audio':a.usb_audio,'flashable':False,'device_operations_performed':False,
+                'default_kind':default_song['kind'],'default_song':default_song,
                 'lcd_spi_mhz':a.lcd_spi,'lcd_wire_bpp':12 if a.lcd_rgb444 else 16,
                 'sdk_commit':SDK_PIN,'application_bytes':len(app.read_bytes()),'application_sha256':hashlib.sha256(app.read_bytes()).hexdigest(),
                 'sample_storage':'read-only flash','upload_storage':'192KiB RAM, volatile','static_audit':report,
                 'source_sha256':{str(s):hashlib.sha256(s.read_bytes()).hexdigest() for s in inputs},
                 'archive_sha256':{str(s):hashlib.sha256(s.read_bytes()).hexdigest() for s in libs},'vendor_overlay_sources':overlays}
+        if private is not None:private.verify_sources()
         manifest.write_text(json.dumps(result,indent=2)+'\n')
         print(json.dumps({k:result[k] for k in ('status','application_bytes','application_sha256','flashable','device_operations_performed')},indent=2))
 if __name__=='__main__':main()

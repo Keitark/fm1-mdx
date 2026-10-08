@@ -3,6 +3,11 @@
 #include <setjmp.h>
 #include <stdlib.h>
 #define CHECK(x) do {if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
+#if defined(FM1_MDX_PRIVATE_DEFAULT) && FM1_MDX_PRIVATE_DEFAULT
+#define DEFAULT_PCM_MUTE 0u
+#else
+#define DEFAULT_PCM_MUTE 0x100u
+#endif
 volatile uint32_t fm1_display_stage;
 volatile int fm1_display_error;
 static unsigned ms,opened,closed,timer_deleted,key_stopped,lcd_stopped;
@@ -55,7 +60,7 @@ void os_time_dly(int n){
     CHECK(n==1);
     for(i=0;i<(unsigned)n;i++) {
         ms++;if(tick)tick(0);if(keyirq)keyirq();if(alink)alink();
-        if(ms==20){CHECK(player.mute_mask==0x100);command("MDX MUTE 00 1");}
+        if(ms==20){CHECK(player.mute_mask==DEFAULT_PCM_MUTE);command("MDX MUTE 00 1");}
         if(ms==21)command("MDX GUIDE 1");
         if(ms==22)command("MDX NOTE 3c 1");
         if(ms==35){CHECK(player.live_note[0]==60);CHECK(player.mute_mask&1);CHECK(guide_enabled && guide.active);command("MDX GUIDE");CHECK(strstr(answer,"enabled=1"));}
@@ -64,7 +69,7 @@ void os_time_dly(int n){
         if(ms==46){command("MDX ABORT");CHECK(!upload.active);command("MDX DEMO");}
         if(ms==55)encoders.count[0]++;
         if(ms==56){CHECK(player.selected==0);encoders.count[0]++;}
-        if(ms==65){CHECK(player.selected==1 && player.mute_mask==0x102);CHECK(guide.active && guide.selected==1);command("MDX INPUT");CHECK(strstr(answer,"enc=2,0,0,0,0,0,0"));}
+        if(ms==65){CHECK(player.selected==1 && player.mute_mask==(DEFAULT_PCM_MUTE|2u));CHECK(guide.active && guide.selected==1);command("MDX INPUT");CHECK(strstr(answer,"enc=2,0,0,0,0,0,0"));}
         if(ms==80){CHECK(control.running && !player.error);CHECK(mdx_volume.valid && mdx_volume.running && mdx_volume.target==32);CHECK(key_error==FM1_NES_IO_ERROR && !scan_enabled);command("MDX VOLUME");CHECK(strstr(answer,"target=32") && strstr(answer,"running=1"));fm1_peripheral_session_cancel();CHECK(control.running);}
         if(ms==100)fm1_peripheral_cancel();
         CHECK(ms<200);
@@ -94,7 +99,7 @@ static void panel_tests(void) {
     panel_edges(UINT64_C(1)<<40,0,0);CHECK(player.live_note[0]==103);
     panel_edges(3,0,3);CHECK(keyboard_octave==2); /* opposite buttons cancel */
     silence();CHECK(keyboard_slot==41 && player.live_note[0]==-1);
-    action(FM1_MDX_DEMO,0,0);CHECK(player.mute_mask==0x100 && !uploaded_song);
+    action(FM1_MDX_DEMO,0,0);CHECK(player.mute_mask==DEFAULT_PCM_MUTE && !uploaded_song);
     memcpy(upload.bytes+12,fm1_demo_mdx,fm1_demo_mdx_size);
     memcpy(upload.bytes+12+fm1_demo_mdx_size,fm1_demo_pdx,fm1_demo_pdx_size);
     upload.mdx_size=(uint32_t)fm1_demo_mdx_size;upload.pdx_size=(uint32_t)fm1_demo_pdx_size;

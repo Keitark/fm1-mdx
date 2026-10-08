@@ -126,6 +126,31 @@ hashes and static audit. The application payload is **not a flash/update file**.
 The audit retains the SDK startup/integrity checks and IRQ-based UBOOT recovery.
 There is no firmware flasher or stock-layout packager in this repository.
 
+An optional private boot song uses explicitly selected local MDX/PDX files and
+both pinned SHA-256 values. Supply `--default-mdx`, `--default-pdx`,
+`--default-mdx-sha256` and `--default-pdx-sha256` to `scripts/build.py firmware`,
+with an explicit new `--out build/<new-private-build>` directory. All four input
+flags are required together. The PDX filename must match the MDX's reference.
+No song is searched for or downloaded. Without these flags, the original demo
+build remains unchanged.
+
+The builder checks exact bytes/hashes, CP932 title/reference, MDX chunk bounds
+and PDX sample ranges, then creates read-only arrays only in the ignored
+output's `generated/private-song.c`. It never replaces tracked `samples/demo.c`
+or overwrites a previous private output. Private manifests contain song
+metadata and the pinned local source closure; keep those manifests, generated
+arrays, song inputs and build products private and out of commits. Selecting a
+private song preserves its original PCM mix; the original demo retains its
+existing drum mute. Full sequencing/host and physical acceptance remain separate
+from structural asset validation.
+
+The source-only generator checks use original/synthetic fixtures:
+
+```powershell
+python scripts/test_private_song.py -v
+python -O scripts/test_private_song.py -v
+```
+
 An optional composite USB Audio Class1 + CDC profile adds computer playback
 through FM1 and MDX recording to the computer at48kHz stereo16-bit PCM:
 
